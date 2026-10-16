@@ -162,6 +162,8 @@ RUN set -eux; \
     printf 'DSH_VERSION=%s\nCADDY_VERSION=%s\n' "${DSH_VERSION}" "${CADDY_VERSION}" > /etc/dsh-version; \
     mkdir -p /data/dsh/agents /workspace; \
     chown -R 1000:1000 /data /workspace; \
+    mkdir -p /home/node/.npm; \
+    chown -R 1000:1000 /home/node; \
     ln -sfn /workspace /home/node/workspace; \
     chown -h 1000:1000 /home/node/workspace
 

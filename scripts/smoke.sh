@@ -480,6 +480,14 @@ if docker exec --user 1000:1000 "${NAME}" sh -c "test -w \"\${HOME:-/nonexistent
 else
     fail "HOME (${CONTAINER_HOME}) is not writable by the account the container runs as; ~/.ssh and tool caches will fail"
 fi
+# ...and writable *for npm*, not just for the account: a root-owned ~/.npm in the
+# image makes every `npm` the agent runs die with EACCES on the cache, which reads
+# like anything but a permissions bug (measured 2026-10-17, fixed in the Dockerfile).
+if docker exec --user 1000:1000 "${NAME}" sh -c 'mkdir -p "$HOME/.npm" && touch "$HOME/.npm/.smoke" && rm -f "$HOME/.npm/.smoke"' 2>/dev/null; then
+    pass 'npm can write its cache under HOME (the account owns ~/.npm)'
+else
+    fail 'npm cannot write its cache under HOME; npm commands run by the agent fail with EACCES'
+fi
 
 # 5c — a CLI the operator installed under /data has to reach the *DSH process's*
 # PATH: that is the environment a plugin inherits when it shells out, and it is the
