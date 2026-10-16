@@ -121,10 +121,10 @@ docker compose up -d          # 或重建你自己的容器
 
 ## 在 Unraid 上
 
-Unraid 不需要专门的构建——Community Applications 里装的就是这个镜像。Unraid 那部分东西
-放在独立仓库 **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**：
-容器模板、模板 `Extra Parameters` 里的那两个 `--security-opt`、从别的 DSH 镜像迁移过来的
-步骤，以及 Unraid 论坛[支持帖](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)。
+Unraid 不需要专门的构建：在 Community Applications 里装 **DSH**，并保留模板自带的
+**Extra Parameters**——那两个 `--security-opt` 是沙箱在 Unraid 内核上工作的前提。Unraid
+相关的说明（模板字段、从别的 DSH 镜像迁移）与论坛[支持帖](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)
+都在 **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**。
 
 ## 更多文档
 

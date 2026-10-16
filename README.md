@@ -132,12 +132,12 @@ An hourly job checks upstream, rebuilds and smoke-tests the image, and publishes
 
 ## On Unraid
 
-Unraid needs no special build — this image is exactly what the Community Applications
-entry installs. The Unraid-side pieces live in their own repository,
-**[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**: the container
-template, the two `--security-opt` values in its `Extra Parameters`, the guide for
-migrating from another DSH image, and the Unraid forum
-[support thread](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/).
+Unraid needs no special build: install the Community Applications entry **DSH** and keep
+its `Extra Parameters` as shipped — the two `--security-opt` values are what the sandbox
+needs on an Unraid kernel. Unraid-specific notes (the template's fields, migrating from
+another DSH image) and the
+[forum support thread](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)
+are at **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**.
 
 ## Learn more
 
