@@ -2,9 +2,17 @@ name: release
 
 # Tracks upstream DeepSeek Harness and publishes a multi-arch image.
 #
-# The version signal is the npm registry, not GitHub Releases (upstream has
-# none) and not the `latest` dist-tag (it lags behind `alpha`). See
+# The version signal is the npm registry — the image installs the npm tarball, so
+# the registry is what has to exist before a build can succeed. Upstream's GitHub
+# Releases appear ~8 minutes earlier (measured 2026-10-16: release 12:23:28Z, npm
+# 12:31:49Z), which buys nothing and would only add a second source of truth. The
+# `latest` dist-tag is not the signal either: it lags behind `alpha` (measured
+# 2026-10-15, latest=0.2.0-rc.2 while alpha=0.2.1-alpha.3). See
 # scripts/resolve-dsh-version.mjs for the resolution rules.
+#
+# Tags are named `dsh-v<version>`, mirroring upstream's own scheme (their release
+# list reads `dsh-v0.2.1-alpha.5`), so one version is spelled the same way in both
+# repositories and cross-referencing stays a copy-paste.
 #
 # The Unraid template is NOT built or attached here any more: it lives in its own
 # repository (2220545672/dsh-unraid) and points at this image's `:latest` tag, so
@@ -99,7 +107,7 @@ jobs:
         id: decide
         run: |
           set -euo pipefail
-          tag="dsh-${{ steps.pick.outputs.version }}"
+          tag="dsh-v${{ steps.pick.outputs.version }}"
           if [[ '${{ inputs.force }}' == 'true' ]]; then
             echo 'build=true' >> "${GITHUB_OUTPUT}"
             echo "::notice::force=true, rebuilding ${tag}"
@@ -218,7 +226,7 @@ jobs:
         run: |
           set -euo pipefail
           version='${{ needs.resolve.outputs.version }}'
-          tag="dsh-${version}"
+          tag="dsh-v${version}"
           cat > notes.md <<EOF
           DeepSeek Harness **${version}** as a container image, for any Docker host.
 

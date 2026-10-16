@@ -66,7 +66,12 @@ version and takes the highest by semver; prereleases participate per the spec.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `validate` | Every push and PR | Static gates + shellcheck + hadolint + `caddy validate` + script end-to-end |
-| `release` | Hourly cron (:17), pushes touching the image, manual | Resolve version → **static gates** → build amd64 → smoke → push amd64+arm64 (`:<version>`, `:latest`, `:<channel>`) → create the `dsh-<version>` tag and Release |
+| `release` | Hourly cron (:17), pushes touching the image, manual | Resolve version → **static gates** → build amd64 → smoke → push amd64+arm64 (`:<version>`, `:latest`, `:<channel>`) → create the `dsh-v<version>` tag and Release |
+
+Release tags are spelled `dsh-v<version>` to match upstream's own scheme
+(`deepseek-ai/deepseek-harness` releases as `dsh-v0.2.1-alpha.5`), so one version reads
+the same in both repositories. The **image** tags stay un-prefixed (`:0.2.1-alpha.5`),
+because those mirror the npm version they were built from.
 
 **The gates are shared**: the verify step in `release` runs exactly the
 `scripts/check-static.sh` that `validate` uses, so **a commit that fails the checks
@@ -78,7 +83,7 @@ Manual release: Actions → `release` → *Run workflow*.
 | Input | Description |
 |---|---|
 | `version` | Empty = resolve the highest version automatically; you can also name an exact version |
-| `force` | Checked = rebuild even if the `dsh-<version>` tag already exists (re-publishing the same version, or refreshing an image after a Dockerfile change) |
+| `force` | Checked = rebuild even if the `dsh-v<version>` tag already exists (re-publishing the same version, or refreshing an image after a Dockerfile change) |
 
 Running it again for an already-published version takes the **skip branch**: `resolve`
 sees the tag already exists → `build=false` → everything after that is skipped, so no

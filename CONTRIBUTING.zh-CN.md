@@ -64,7 +64,11 @@ node scripts/resolve-dsh-version.mjs --version=0.2.1-alpha.4
 | 工作流 | 触发 | 做什么 |
 |---|---|---|
 | `validate` | 每次 push / PR | 静态闸门 + shellcheck + hadolint + `caddy validate` + 脚本端到端 |
-| `release` | 每小时 :17、触及镜像的 push、手动 | 解析版本 → **静态闸门** → 构建 amd64 → 冒烟 → 推送 amd64+arm64（`:<版本>`、`:latest`、`:<通道>`）→ 建 `dsh-<版本>` tag 与 Release |
+| `release` | 每小时 :17、触及镜像的 push、手动 | 解析版本 → **静态闸门** → 构建 amd64 → 冒烟 → 推送 amd64+arm64（`:<版本>`、`:latest`、`:<通道>`）→ 建 `dsh-v<版本>` tag 与 Release |
+
+Release tag 一律写成 `dsh-v<版本>`，与上游自己的命名一致（`deepseek-ai/deepseek-harness`
+的 Release 就是 `dsh-v0.2.1-alpha.5`），这样一个版本在两个仓库里拼写相同、可以直接互相粘贴。
+**镜像** tag 保持不带 `v`（`:0.2.1-alpha.5`），因为它对应的是构建所依据的 npm 版本号。
 
 **闸门是共用的**：`release` 的 verify 步骤跑的就是 `validate` 用的那个 `scripts/check-static.sh`，
 所以**检查不过的提交什么都发不出去**（publish 与 release 两个 job 直接跳过）。两者曾经各自独立，
@@ -75,7 +79,7 @@ node scripts/resolve-dsh-version.mjs --version=0.2.1-alpha.4
 | 输入 | 说明 |
 |---|---|
 | `version` | 留空 = 自动解析最高版本；也可以指定确切版本 |
-| `force` | 勾选 = 即使 `dsh-<版本>` tag 已存在也重建（重发同一版本，或改了 Dockerfile 后刷新镜像） |
+| `force` | 勾选 = 即使 `dsh-v<版本>` tag 已存在也重建（重发同一版本，或改了 Dockerfile 后刷新镜像） |
 
 对已发布的版本再跑一次会走**跳过分支**：`resolve` 看到 tag 已存在 → `build=false` → 后面全部跳过，
 不浪费构建时间。**只改本仓库文档或脚本的 push 不会重发任何东西**——要用 `force`。
