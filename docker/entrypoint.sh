@@ -314,6 +314,33 @@ prepare_directory "${DSH_WORKSPACE}"
 prepare_directory "${CADDY_CONFIG_HOME}"
 prepare_directory "${CADDY_DATA_HOME}"
 
+# --------------------------------------------------------- operator CLI tools
+
+# A tool an operator installs belongs on the persistent volume: the layered
+# filesystem — and with it anything `npm i -g` wrote — is thrown away when the
+# container is recreated. These two layouts are picked up and put on PATH for the
+# DSH process, and therefore for everything DSH spawns: the commands the agent runs,
+# and any plugin that shells out to a CLI.
+#
+#   ${DSH_HOME}/bin                             plain executables: drop or symlink
+#   ${DSH_HOME}/tools/<name>/node_modules/.bin  what `npm i --prefix` leaves behind
+#
+# Generic on purpose: the image bakes in no tool and installs nothing at boot, so an
+# operator who installs nothing sees no difference at all. Appended, never
+# prepended — a tool dropped in here must not be able to shadow the image's own
+# node/git/curl. Note that `docker exec` runs with the container's *configured*
+# environment and so never sees this PATH; call those tools by absolute path there.
+OPERATOR_TOOL_PATH=()
+for operator_tool_dir in "${DSH_HOME}/bin" "${DSH_HOME}"/tools/*/node_modules/.bin; do
+    [[ -d "${operator_tool_dir}" ]] && OPERATOR_TOOL_PATH+=("${operator_tool_dir}")
+done
+if (( ${#OPERATOR_TOOL_PATH[@]} > 0 )); then
+    operator_tool_path="$(IFS=:; printf '%s' "${OPERATOR_TOOL_PATH[*]}")"
+    PATH="${PATH}:${operator_tool_path}"
+    export PATH
+    log "operator tools on PATH: ${operator_tool_path}"
+fi
+
 # ------------------------------------------------------------- password gate
 
 # AUTH_MODE=builtin serves a gate of our own: a fresh install must not be usable

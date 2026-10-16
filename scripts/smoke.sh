@@ -29,6 +29,10 @@
 #      live while a sign-in actually waits; REMOTE_SIGNIN=off leaves upstream behaviour
 #      alone.
 #   5. bwrap confines a shell       — the sandbox rung a Landlock-less kernel depends on exists.
+#  5b. the image ships the tools    — and HOME is writable by the account it drops to.
+#  5c. operator tools reach the PATH — a CLI installed under /data (${DSH_HOME}/bin or the
+#                                     node_modules/.bin of ${DSH_HOME}/tools/<name>) is on the
+#                                     DSH process's PATH, and is executable by uid 1000.
 #   6. both Caddyfiles validate     — a config typo cannot ship.
 set -Eeuo pipefail
 
@@ -56,6 +60,13 @@ pass() { printf 'ok   %s\n' "$*"; }
 fail() { printf 'FAIL %s\n' "$*"; FAILURES=$((FAILURES + 1)); }
 
 mkdir -p "${WORKDIR}/data" "${WORKDIR}/workspace"
+
+# Operator-installed CLI tools, asserted in 5c below. Both documented layouts are
+# populated *before* the container starts: the PATH scan happens once, at boot.
+mkdir -p "${WORKDIR}/data/dsh/bin" "${WORKDIR}/data/dsh/tools/smoke-tool/node_modules/.bin"
+printf '#!/bin/sh\nprintf "smoke-flat\\n"\n' > "${WORKDIR}/data/dsh/bin/smoke-flat"
+printf '#!/bin/sh\nprintf "smoke-npm\\n"\n' > "${WORKDIR}/data/dsh/tools/smoke-tool/node_modules/.bin/smoke-npm"
+chmod 0755 "${WORKDIR}/data/dsh/bin/smoke-flat" "${WORKDIR}/data/dsh/tools/smoke-tool/node_modules/.bin/smoke-npm"
 
 printf 'starting %s\n' "${IMAGE}"
 # ALLOWED_CLIENTS: the checks below curl from the CI host. Depending on the docker
@@ -468,6 +479,33 @@ if docker exec --user 1000:1000 "${NAME}" sh -c "test -w \"\${HOME:-/nonexistent
     pass "HOME (${CONTAINER_HOME}) is writable by the account the container runs as"
 else
     fail "HOME (${CONTAINER_HOME}) is not writable by the account the container runs as; ~/.ssh and tool caches will fail"
+fi
+
+# 5c — a CLI the operator installed under /data has to reach the *DSH process's*
+# PATH: that is the environment a plugin inherits when it shells out, and it is the
+# only reason a tool survives a container recreate (the volume does, the layered
+# filesystem does not). Asserted through /proc rather than `docker exec`: an exec
+# session is started with the container's configured environment, so it can never
+# show a PATH the entrypoint exported at boot. Both documented layouts are checked —
+# ${DSH_HOME}/bin and the node_modules/.bin of ${DSH_HOME}/tools/<name> — and so is
+# the fact that the account DSH runs as can actually execute what it finds there.
+if docker exec --user 1000:1000 "${NAME}" sh -c '
+    for dir in /proc/[0-9]*; do
+        tr "\0" " " < "${dir}/cmdline" 2>/dev/null | grep -q "bin.js" || continue
+        path="$(tr "\0" "\n" < "${dir}/environ" 2>/dev/null | grep "^PATH=" || true)"
+        case "${path}" in *"/data/dsh/bin"*) ;; *) continue ;; esac
+        case "${path}" in *"/data/dsh/tools/smoke-tool/node_modules/.bin"*) exit 0 ;; esac
+    done
+    exit 1
+' 2>/dev/null; then
+    pass 'tools installed under the persistent volume reach the DSH process PATH'
+else
+    fail 'a CLI installed under /data never made it onto the DSH process PATH; it would not survive a container recreate'
+fi
+if docker exec --user 1000:1000 "${NAME}" sh -c '/data/dsh/bin/smoke-flat >/dev/null && /data/dsh/tools/smoke-tool/node_modules/.bin/smoke-npm >/dev/null' 2>/dev/null; then
+    pass 'the account DSH runs as can execute tools from the persistent volume'
+else
+    fail 'tools in the persistent volume are not executable by the account DSH runs as'
 fi
 
 # 6 — both Caddy configs must validate

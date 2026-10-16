@@ -85,6 +85,35 @@ Already running SSO (Authelia, Authentik, a NAS portal, …)? Set `AUTH_MODE=non
 
 Volumes are taken over as `1000:1000`. Leave that alone — it is not a NAS's usual `99:100`.
 
+## Installing your own CLI tools
+
+`docker exec … npm i -g` is a trap: the global prefix lives in the image's layered
+filesystem, so the tool is gone the next time the container is recreated. Install under
+`/data` instead and it survives every update — the entrypoint puts two layouts on the
+PATH of the DSH process (and of everything DSH spawns, which is what a plugin shells out
+to):
+
+```bash
+# an npm CLI — no symlink needed, tools/<name>/node_modules/.bin is picked up as it is
+docker exec -u 1000 <container> npm i --prefix /data/dsh/tools/codegraph @colbymchenry/codegraph
+
+# a single binary — drop it in, or symlink it from wherever it was installed
+docker exec -u 1000 <container> ln -s /data/dsh/tools/codegraph/node_modules/.bin/codegraph /data/dsh/bin/codegraph
+```
+
+Both are scanned once at start — `/data/dsh/bin` and every
+`/data/dsh/tools/*/node_modules/.bin` (`DSH_HOME` is `/data/dsh` unless you moved it) —
+and **appended** to `PATH`, never prepended, so nothing you install can shadow the
+image's own `node`, `git` or `curl`. With neither directory present nothing changes at
+all, and the container says so in its log when something was picked up:
+
+```text
+[entrypoint] operator tools on PATH: /data/dsh/bin:/data/dsh/tools/codegraph/node_modules/.bin
+```
+
+Restart the container after installing (the scan runs once, at boot). `docker exec`
+sessions keep the image's own `PATH` — inside those, call the tool by its absolute path.
+
 ## Signing in with a DeepSeek account
 
 Upstream hands the platform the address **you are browsing from** and asks it to deliver

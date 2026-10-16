@@ -85,6 +85,26 @@ docker compose up -d
 
 卷的属主会被接管为 `1000:1000`，别改成 NAS 习惯的 `99:100`。
 
+## 自己装命令行工具
+
+`docker exec … npm i -g` 是个陷阱：全局安装目录在镜像的分层文件系统里，容器一重建工具就没了。装到 `/data` 下面才能跨更新存活——entrypoint 会把下面两种布局加到 DSH 进程（以及它派生的一切，也就是插件 shell 出去执行命令时的环境）的 `PATH` 上：
+
+```bash
+# npm 装的 CLI：不用建软链，tools/<名字>/node_modules/.bin 本身就会被扫到
+docker exec -u 1000 <容器名> npm i --prefix /data/dsh/tools/codegraph @colbymchenry/codegraph
+
+# 单个可执行文件：直接放进去，或者从装好的位置软链过来
+docker exec -u 1000 <容器名> ln -s /data/dsh/tools/codegraph/node_modules/.bin/codegraph /data/dsh/bin/codegraph
+```
+
+两者都在启动时扫一次 —— `/data/dsh/bin` 与所有 `/data/dsh/tools/*/node_modules/.bin`（没改过 `DSH_HOME` 时就是这些路径）—— 并且是**追加**到 `PATH` 末尾、不是插到前面，所以你装的工具不可能盖掉镜像自带的 `node`/`git`/`curl`。两个目录都不存在时行为完全不变；扫到东西时容器日志会说明：
+
+```text
+[entrypoint] operator tools on PATH: /data/dsh/bin:/data/dsh/tools/codegraph/node_modules/.bin
+```
+
+装完要重启容器（扫描只在启动时做一次）。`docker exec` 进去的会话仍是镜像原本的 `PATH`，在那里请用绝对路径调用。
+
 ## 用 DeepSeek 账号登录
 
 上游会把**你此刻打开界面的地址**交给 DeepSeek 平台，让平台把登录结果送回那里——而平台只接受*本机*地址。于是从另一台机器点「用 DeepSeek 账号登录」，在登录页打开之前就失败了（提示「操作未完成，请重试。」），变通办法一直是改用 API Key 或每次开 `ssh -L` 隧道。
