@@ -228,33 +228,30 @@ jobs:
           version='${{ needs.resolve.outputs.version }}'
           tag="dsh-v${version}"
           cat > notes.md <<EOF
-          DeepSeek Harness **${version}** as a container image, for any Docker host.
+          DeepSeek Harness **${version}** as a container image. On Unraid it installs from Community Applications.
 
           - image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${version}\` (also tagged \`latest\`, \`${{ needs.resolve.outputs.channel }}\`)
           - upstream package: \`@deepseek-ai/dsh@${version}\` (node \`${{ needs.resolve.outputs.node }}\`)
           - npm dist-tags at build time: \`${{ needs.resolve.outputs.dist_tags }}\`
           - image digest: \`${{ needs.publish.outputs.digest }}\`
 
-          ### Run it
+          ### Install: Unraid → **Apps** → search "DSH"
 
-          \`\`\`bash
-          docker run -d --name dsh --restart unless-stopped -p 8080:8080 \\
-            -e ALLOWED_CLIENTS=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 \\
-            -v "\$PWD/dsh/data:/data" -v "\$PWD/dsh/workspace:/workspace" \\
-            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \\
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${version}
-          \`\`\`
+          1. **Apps** tab → search \`DSH\` (category *Tools*) → **Install**
+          2. Fill in the template: data and workspace paths, the IPs or domains allowed to reach it,
+             and your sign-in user and password. The template ships \`dsh\` / \`12345678\`, so
+             **change the password before you go any further**.
+          3. **Apply** — the WebUI opens on the port you picked, and the token bootstrap completes by itself.
 
-          Two notes that catch people out: \`ALLOWED_CLIENTS\` is what lets your browser in
-          (the image's own default is loopback only), and the two \`--security-opt\` values are
-          what let the agent's command sandbox start on kernels without Landlock — see
-          [docs/sandbox.md](https://github.com/${{ github.repository }}/blob/main/docs/sandbox.md).
+          The CA entry and the template in
+          [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid) are the same thing, and both
+          install this image's \`latest\` tag. Later releases therefore ask nothing of you beyond
+          *Force update* on the Docker tab; pin \`${version}\` only if you would rather move on your own
+          schedule.
 
-          **Unraid:** install the Community Applications entry "DSH" or use the template in
-          [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid); both point at this
-          image's \`latest\` tag, so this release needs no action there.
-
-          Documentation: https://github.com/${{ github.repository }}/blob/main/README.md
+          Not on Unraid? The image is generic (amd64/arm64) and self-contained — the \`docker run\` recipe,
+          every setting and the sandbox caveats are in the
+          [documentation](https://github.com/${{ github.repository }}/blob/main/README.md).
           EOF
           if gh release view "${tag}" >/dev/null 2>&1; then
             # A forced rebuild of an already released version must not fail here.
