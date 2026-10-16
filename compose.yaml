@@ -15,6 +15,10 @@ services:
       - "${DSH_PORT:-8080}:8080"
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      # builtin = the container's own password gate (the default, and what makes a
+      # freshly published port safe); none = an authenticating reverse proxy or a
+      # trusted network is in front of it. Any other value refuses to start.
+      AUTH_MODE: ${AUTH_MODE:-builtin}
       # Leave empty for a trusted LAN; set https://your.host when an
       # authenticating reverse proxy fronts this container.
       PUBLIC_URL: ${PUBLIC_URL:-}

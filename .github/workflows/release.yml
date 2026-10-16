@@ -235,7 +235,7 @@ jobs:
           - npm dist-tags at build time: \`${{ needs.resolve.outputs.dist_tags }}\`
           - image digest: \`${{ needs.publish.outputs.digest }}\`
 
-          ### Install: Unraid → **Apps** → search "DSH"
+          ### Unraid: **Apps** → search "DSH"
 
           1. **Apps** tab → search \`DSH\` (category *Tools*) → **Install**
           2. Fill in the template: data and workspace paths, the IPs or domains allowed to reach it,
@@ -245,12 +245,30 @@ jobs:
 
           The CA entry and the template in
           [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid) are the same thing, and both
-          install this image's \`latest\` tag. Later releases therefore ask nothing of you beyond
-          *Force update* on the Docker tab; pin \`${version}\` only if you would rather move on your own
-          schedule.
+          install this image's \`latest\` tag, so later releases ask nothing of you beyond *Force update*
+          on the Docker tab.
 
-          Not on Unraid? The image is generic (amd64/arm64) and self-contained — the \`docker run\` recipe,
-          every setting and the sandbox caveats are in the
+          ### Any other Docker host (amd64 / arm64)
+
+          \`\`\`bash
+          # Compose — a password is generated on first start and printed once
+          curl -fsSLO https://raw.githubusercontent.com/${{ github.repository }}/main/compose.yaml
+          docker compose up -d && docker logs dsh | grep 'GENERATED PASSWORD'
+
+          # or plain docker
+          docker run -d --name dsh --restart unless-stopped -p 8080:8080 \\
+            -e ALLOWED_CLIENTS=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 \\
+            -v "\$PWD/dsh/data:/data" -v "\$PWD/dsh/workspace:/workspace" \\
+            --security-opt seccomp=unconfined --security-opt systempaths=unconfined \\
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${version}
+          \`\`\`
+
+          Log in as \`dsh\` with the generated password, or set your own with \`-e DSH_PASSWORD=…\`
+          (8+ characters). Two things catch people out when the command is written by hand:
+          \`ALLOWED_CLIENTS\` is what lets a browser on another machine in (the image trusts loopback
+          only by default, so everything else gets \`403\`), and the two \`--security-opt\` values are what
+          let the bundled sandbox start on kernels without Landlock. Pin \`${version}\` instead of
+          \`latest\` to move on your own schedule; every setting is in the
           [documentation](https://github.com/${{ github.repository }}/blob/main/README.md).
           EOF
           if gh release view "${tag}" >/dev/null 2>&1; then
