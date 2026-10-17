@@ -15,6 +15,12 @@
 
 > **开发者预览。** DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。** —— 引自[上游项目](https://github.com/deepseek-ai/deepseek-harness/blob/main/README.zh.md#开发者预览)。本镜像会自动跟随上游发布；想自己掌握节奏，可以钉住[版本标签](#更新)。
 
+## 这个镜像的优势
+
+- **插件（以及插件调用的命令行工具）跨更新存活。** 两者都装在 `/data` 里、不在镜像里，所以重建容器不会把它们弄丢：[插件](#装插件)装在卷上的 profile 目录，插件的命令行工具由 entrypoint 挂到 DSH 进程的 `PATH` 上（[自己装命令行工具](#自己装命令行工具)）。
+- **DeepSeek 账号登录在远程浏览器上可用。** 上游只在浏览器与 DSH 同机时才肯完成登录；本镜像内置 [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin) 并默认开启：登录标签页停在打不开的 `127.0.0.1` 页面后，粘贴面板会自己出现在 DSH 页面里——只多这一步，别的不变（[docs/remote-signin.zh-CN.md](docs/remote-signin.zh-CN.md)；`REMOTE_SIGNIN=off` 可关掉）。
+- **持续跟随 DSH 官方更新，且只发布测过的构建。** 每小时的任务去 npm 上取 `@deepseek-ai/dsh` 的最新版本，构建 amd64 + arm64，在构建出的容器上跑完整冒烟，全部通过才发布：`:latest` 永远不是未经测试的构建（[更新](#更新)）。
+
 ## 快速开始
 
 ```bash
@@ -104,6 +110,24 @@ docker exec -u 1000 <容器名> ln -s /data/dsh/tools/codegraph/node_modules/.bi
 ```
 
 装完要重启容器（扫描只在启动时做一次）。`docker exec` 进去的会话仍是镜像原本的 `PATH`，在那里请用绝对路径调用。
+
+## 装插件
+
+DSH 插件由 **profile** 加载，而 profile 就在持久卷上 —— 所以装过的插件在容器重建后依然在：
+
+```bash
+docker exec -u 1000 <容器名> dsh plugin --profile web add @scope/some-plugin
+docker exec -u 1000 <容器名> dsh plugin --profile web add github:owner/repo
+docker exec -u 1000 <容器名> dsh plugin --profile web why @scope/some-plugin   # 看 profile 里现在有什么
+docker exec -u 1000 <容器名> dsh plugin --profile web remove @scope/some-plugin
+```
+
+`dsh plugin` 把参数原样转发给 profile 目录（默认 `/data/dsh/profiles/web`）里的 pnpm，启动时 launcher 会把该 profile 声明的层组合起来 —— **装完重启容器**才会加载。两个容易踩的点：
+
+- **必须用 uid 1000 执行**（`docker exec -u 1000 …`）。用 root 装，文件在 `/data` 里属 root，随后以 uid 1000 运行的 DSH 进程就读不到了。
+- **插件若还要调自己的命令行工具**，那个工具也得在 DSH 进程的 `PATH` 上：先按上一节把它装到 `/data` 下，entrypoint 下次启动就会带上它。
+
+除此之外镜像里不预装任何插件：你的插件是你的，且都在能扛过 `docker pull` + 重建的那个卷里。唯一的例外是远程登录插件——它**有意**待在镜像里（钉住一个发行 tag），好让默认安装就能从远程浏览器登录（见[下文](#用-deepseek-账号登录)）。
 
 ## 用 DeepSeek 账号登录
 

@@ -15,6 +15,23 @@
 
 > **Developer preview.** DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.** — quoted from the [upstream project](https://github.com/deepseek-ai/deepseek-harness#developer-preview). This image tracks upstream releases automatically, so pin a [version tag](#update) if you would rather move on your own schedule.
 
+## Why this image
+
+- **Plugins — and the CLIs they call — survive an update.** Both live under `/data`, not in
+  the image, so recreating the container does not remove them: [plugins](#installing-plugins)
+  are installed into the profile on the volume, and the entrypoint puts the CLIs on the
+  PATH of the DSH process ([Installing your own CLI tools](#installing-your-own-cli-tools)).
+- **DeepSeek account sign-in works from a remote browser.** Upstream only completes the
+  sign-in when the browser runs on the same machine as DSH. This image ships
+  [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin) and enables it by
+  default: the login tab ends on a dead `127.0.0.1` page and the paste panel appears in
+  the DSH page — one extra step, nothing else
+  ([docs/remote-signin.md](docs/remote-signin.md); `REMOTE_SIGNIN=off` opts out).
+- **It tracks upstream — and tests what it publishes.** An hourly job resolves the newest
+  `@deepseek-ai/dsh` version on npm, builds the image for amd64 and arm64, runs the whole
+  smoke suite against the built container, and publishes only when every check passes:
+  `:latest` is never an untested build ([Update](#update)).
+
 ## Quick start
 
 ```bash
@@ -113,6 +130,34 @@ all, and the container says so in its log when something was picked up:
 
 Restart the container after installing (the scan runs once, at boot). `docker exec`
 sessions keep the image's own `PATH` — inside those, call the tool by its absolute path.
+
+## Installing plugins
+
+A DSH plugin is loaded from the **profile**, which lives on the persistent volume — so a
+plugin you add is still installed after the container is recreated:
+
+```bash
+docker exec -u 1000 <container> dsh plugin --profile web add @scope/some-plugin
+docker exec -u 1000 <container> dsh plugin --profile web add github:owner/repo
+docker exec -u 1000 <container> dsh plugin --profile web why @scope/some-plugin   # what the profile carries
+docker exec -u 1000 <container> dsh plugin --profile web remove @scope/some-plugin
+```
+
+`dsh plugin` forwards its arguments to pnpm inside `$DSH_HOME/profiles/web`
+(`/data/dsh/profiles/web` by default), and the launcher composes whatever that profile
+declares — restart the container to load it. Two details that bite:
+
+- **Run it as uid 1000** (`docker exec -u 1000 …`). As root the package lands in `/data`
+  owned by root, and the DSH process — uid 1000 — can no longer read it.
+- **A plugin that shells out to its own command-line tool** needs that tool on the PATH of
+  the DSH process as well; install it under `/data` first
+  ([Installing your own CLI tools](#installing-your-own-cli-tools)) and the entrypoint
+  picks it up at the next start.
+
+Nothing else is installed into the image: your plugins are yours, and they sit on the
+volume that survives `docker pull` and a recreate. The remote sign-in plugin is the one
+deliberate exception — it ships inside the image, pinned to a release tag, so that a
+default install can sign in from a remote browser ([below](#signing-in-with-a-deepseek-account)).
 
 ## Signing in with a DeepSeek account
 
