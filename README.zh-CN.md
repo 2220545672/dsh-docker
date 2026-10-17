@@ -1,75 +1,56 @@
 <h1 align="center">DSH — DeepSeek Harness 容器版</h1>
 
-<p align="center">把 <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>（浏览器里用的 AI 编程智能体）装进一个自包含镜像，任何 Docker 主机都能跑：命令沙箱在没有 Landlock 的内核上也能用，每次上游发版自动重建并冒烟测试。</p>
+<p align="center">把 <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>（在浏览器里驱动的 AI 编程智能体）装进一个自包含镜像，任何 Docker 主机都能跑：一个端口、两个卷、一条命令。</p>
 
-<p align="center"><a href="README.md">English</a> · <b>中文说明</b></p>
+<p align="center"><a href="README.md">English</a> · <b>中文说明</b><br>
+<a href="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
+<a href="https://github.com/2220545672/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/2220545672/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
+<img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
+<img src="https://img.shields.io/badge/license-MIT-green" alt="license"></p>
 
-<p align="center">
-  <a href="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
-  <a href="https://github.com/2220545672/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/2220545672/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
-  <img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
-</p>
-
----
-
-> **开发者预览。** DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。** —— 引自[上游项目](https://github.com/deepseek-ai/deepseek-harness/blob/main/README.zh.md#开发者预览)。本镜像会自动跟随上游发布；想自己掌握节奏，可以钉住[版本标签](#更新)。
+> **开发者预览。** 上游迭代很快，破坏兼容性的变更会持续出现。本镜像自动跟随上游发布——想自己掌握节奏就钉住[版本标签](#更新)。
 
 ## 这个镜像的优势
 
-- **插件（以及插件调用的命令行工具）跨更新存活。** 两者都装在 `/data` 里、不在镜像里，所以重建容器不会把它们弄丢：[插件](#装插件)装在卷上的 profile 目录，插件的命令行工具由 entrypoint 挂到 DSH 进程的 `PATH` 上（[自己装命令行工具](#自己装命令行工具)）。
-- **DeepSeek 账号登录在远程浏览器上可用。** 上游只在浏览器与 DSH 同机时才肯完成登录；本镜像内置 [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin) 并默认开启：登录标签页停在打不开的 `127.0.0.1` 页面后，粘贴面板会自己出现在 DSH 页面里——只多这一步，别的不变（[docs/remote-signin.zh-CN.md](docs/remote-signin.zh-CN.md)；`REMOTE_SIGNIN=off` 可关掉）。
-- **持续跟随 DSH 官方更新，且只发布测过的构建。** 每小时的任务去 npm 上取 `@deepseek-ai/dsh` 的最新版本，构建 amd64 + arm64，在构建出的容器上跑完整冒烟，全部通过才发布：`:latest` 永远不是未经测试的构建（[更新](#更新)）。
+| | 自己跑上游 | `ghcr.io/2220545672/dsh` |
+|---|---|---|
+| 启动 | 自己装 npm 包、手工配置 | `docker compose up -d` |
+| 没有 Landlock 的内核上（Unraid 7.x、部分设备内核）的命令沙箱 | 起不来 | 可用——内置 bubblewrap，[`compose.yaml`](compose.yaml) 里已带那两个 `--security-opt` |
+| 从另一台机器用 DeepSeek **账号**登录 | 登录页还没打开就失败 | 内置，只多一步粘贴（[说明](docs/remote-signin.zh-CN.md)） |
+| 插件要调用的命令行工具 | 自己挂到 `PATH` 上 | 装在 `/data` 下，[启动时自动挂上](docs/extending.zh-CN.md)，并扛过 `docker pull` 与重建 |
+| 跟随上游 | 你自己的活 | 每小时：取版本 → 构建 amd64 + arm64 → 冒烟 → 全绿才发布 |
+
+**已知限制。** 单用户设计——没有账户体系，能打开界面的人就是同一个工作区主人。从另一台机器用 DeepSeek **账号**登录要多一步粘贴（粘进页面自己弹出的面板），用 API Key 则完全不需要。镜像约 0.9 GB。
 
 ## 快速开始
 
 ```bash
+docker compose up -d          # compose.yaml 里已经带好下面的设置
+```
+
+打开 **`http://<你的主机>:8080`**，用户名 `dsh`；口令只在日志里打印过一次：
+
+```bash
+docker logs dsh | grep -i password
+```
+
+<details>
+<summary>不用 Compose，直接 <code>docker run</code></summary>
+
+```bash
 docker run -d --name dsh --restart unless-stopped -p 8080:8080 \
-  -e ALLOWED_CLIENTS=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 \
+  -e ALLOWED_CLIENTS=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10,fc00::/7,fe80::/10 \
   -v "$PWD/dsh/data:/data" \
   -v "$PWD/dsh/workspace:/workspace" \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
   ghcr.io/2220545672/dsh:latest
 ```
 
-然后打开 **`http://<你的主机>:8080`**，用户名 `dsh`、口令是日志里打印过一次的那一串（`docker logs dsh`）。
+</details>
 
-也可以用 Compose —— [`compose.yaml`](compose.yaml) 里已经带好同样的设置：
+**然后：** 设 `DSH_PASSWORD`、把智能体指向你的项目（目录选择器默认落在 `/workspace`，`~/workspace` 是指向它的软链）、填 API Key 或用账号登录。
 
-```bash
-docker compose up -d
-```
-
-**首次运行最容易踩的三点：**
-
-- **自己写命令时 `ALLOWED_CLIENTS` 不能省。** 镜像自身的默认值是「只允许回环」——这正是"刚发布的端口不会变成敞开的门"的原因——所以其它机器上的浏览器会拿到 `403`，直到你把所在网段加进去。`compose.yaml` 里已经写好了上面那一行。
-- **没有 Landlock 的内核上（Unraid 7.x 及部分设备内核）两个 `--security-opt` 都必须给**，否则智能体的命令沙箱起不来；有 Landlock 的内核可以去掉。原理、对照实验，以及两种会误报的自查方式，见 [docs/sandbox.zh-CN.md](docs/sandbox.zh-CN.md)。
-- **`/data` 与 `/workspace` 必须持久化。** 会话、凭据与智能体主目录在 `/data`，你的项目在 `/workspace`。
-
-## 头五分钟
-
-1. **先改口令。** 没设 `DSH_PASSWORD` 时，容器会在首启生成一个并只在日志里打印一次（`docker logs <容器名>`）。想自己定就设 `DSH_PASSWORD`（或 `DSH_PASSWORD_FILE`）；用户名默认 `dsh`（`AUTH_USER`）。
-2. **指向你的项目。** 智能体在 `/workspace` 里干活，目录选择器默认也落在那里（`~/workspace` 是指向它的软链）。
-3. **填 DeepSeek API Key**：设置面板里的 *Add API key*。用 DeepSeek **账号**登录现在从任何浏览器都能完成：登录标签页停在打不开的 `127.0.0.1` 页面上时，**页面里会自动出现粘贴框**，把地址粘进去即可收尾——详见 [docs/remote-signin.zh-CN.md](docs/remote-signin.zh-CN.md)。
-
-## 整体是怎么搭的
-
-一个容器、两个进程、一个端口：
-
-```text
-浏览器 ──▶ :8080  Caddy（内置）  ──▶ 127.0.0.1:3080  DSH
-                    ├─ 可选口令门禁（默认开启）
-                    ├─ 白名单：ALLOWED_CLIENTS
-                    ├─ 安全响应头、Host/Origin 校验
-                    └─ /healthz 供容器健康检查
-```
-
-- **反向代理已经内置在镜像里。** 对外提供服务的是 Caddy，它转发给只监听回环的 DSH——所以你发布的那个端口是唯一入口，而安全响应头、跨站请求拦截、"远程无意义端点"的拒绝都在这一层完成。你不需要额外安装或配置任何代理。
-- **认证是可选的，而且只是一个开关。** `AUTH_MODE=builtin`（默认）会用浏览器常见的登录框要一次口令，随后以 Cookie 保持登录（该 Cookie 同样覆盖 WebSocket 握手）；`AUTH_MODE=none` 则把鉴权交给前面那一层（带 SSO 的反向代理、VPN、可信内网）。填其它值容器会**拒绝启动**，而不是"看起来有认证"地裸奔——另外**永远不要叠两层登录**。无论哪种模式，容器自身的健康检查都保持免认证。
-- **白名单也在同一层。** `ALLOWED_CLIENTS` 决定谁能连进来；回环永远放行，这正是健康检查能工作的原因。
-- **以非特权身份运行。** uid 1000、不挂 docker socket、除你映射的两个卷之外不碰任何宿主目录。凭据存在 `/data`——这就是那个卷必须持久化的原因。
-- **命令沙箱有两条腿**：bubblewrap（本镜像内置，多数社区镜像没有）与 Landlock（上游的 `landlock-run`，要求内核编入了它）。没有 Landlock 时，正是 bubblewrap 加上那两个 `--security-opt` 把模型生成的命令关在工作区里：[docs/sandbox.zh-CN.md](docs/sandbox.zh-CN.md)。
-- **明文 HTTP 上的口令在公网上不安全。** 门禁保护的是应用而不是链路：对外暴露前，请在它前面终止 TLS。细节见 [docs/security.zh-CN.md](docs/security.zh-CN.md)。
+`403`、`SANDBOX_UNAVAILABLE`、或登录标签页停在 `127.0.0.1`？三种都在[常见问题](#常见问题)里，附能分辨“真故障”与“误报”的命令。
 
 ## 可能会用到的设置
 
@@ -87,53 +68,21 @@ docker compose up -d
 | `REMOTE_SIGNIN` | `on` | 远程浏览器用 DeepSeek **账号**登录：加载 [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin)，由它把粘贴面板注入页面。`off` = 回到上游「仅回环」行为。 |
 | `TZ` | `compose.yaml` 里是 `Asia/Shanghai` | 容器时区。 |
 
-已经上了 SSO（Authelia、Authentik、NAS 自带门户……）？把 `AUTH_MODE` 设为 `none` 并填 `PUBLIC_URL`，**不要再叠一层登录**。
+已经上了 SSO（Authelia、Authentik、NAS 自带门户……）？`AUTH_MODE=none` 加 `PUBLIC_URL`，**不要再叠一层登录**——代理自身必须在 `ALLOWED_CLIENTS` 里，取舍见 [docs/security.zh-CN.md](docs/security.zh-CN.md)：
+
+```yaml
+# 放在鉴权反代后面的容器，compose.yaml 的覆盖写法
+environment:
+  AUTH_MODE: none                       # 由前面的代理鉴权
+  PUBLIC_URL: https://dsh.example.com   # Host 会被改写成它；外来 Origin 一律拒绝
+  TRUSTED_PROXY_CIDRS: 172.30.0.0/24    # 可选：按 X-Forwarded-For 判定真实客户端 IP
+```
 
 卷的属主会被接管为 `1000:1000`，别改成 NAS 习惯的 `99:100`。
 
-## 自己装命令行工具
+## 自己装的工具与插件
 
-`docker exec … npm i -g` 是个陷阱：全局安装目录在镜像的分层文件系统里，容器一重建工具就没了。装到 `/data` 下面才能跨更新存活——entrypoint 会把下面两种布局加到 DSH 进程（以及它派生的一切，也就是插件 shell 出去执行命令时的环境）的 `PATH` 上：
-
-```bash
-# npm 装的 CLI：不用建软链，tools/<名字>/node_modules/.bin 本身就会被扫到
-docker exec -u 1000 <容器名> npm i --prefix /data/dsh/tools/codegraph @colbymchenry/codegraph
-
-# 单个可执行文件：直接放进去，或者从装好的位置软链过来
-docker exec -u 1000 <容器名> ln -s /data/dsh/tools/codegraph/node_modules/.bin/codegraph /data/dsh/bin/codegraph
-```
-
-两者都在启动时扫一次 —— `/data/dsh/bin` 与所有 `/data/dsh/tools/*/node_modules/.bin`（没改过 `DSH_HOME` 时就是这些路径）—— 并且是**追加**到 `PATH` 末尾、不是插到前面，所以你装的工具不可能盖掉镜像自带的 `node`/`git`/`curl`。两个目录都不存在时行为完全不变；扫到东西时容器日志会说明：
-
-```text
-[entrypoint] operator tools on PATH: /data/dsh/bin:/data/dsh/tools/codegraph/node_modules/.bin
-```
-
-装完要重启容器（扫描只在启动时做一次）。`docker exec` 进去的会话仍是镜像原本的 `PATH`，在那里请用绝对路径调用。
-
-## 装插件
-
-DSH 插件由 **profile** 加载，而 profile 就在持久卷上 —— 所以装过的插件在容器重建后依然在：
-
-```bash
-docker exec -u 1000 <容器名> dsh plugin --profile web add @scope/some-plugin
-docker exec -u 1000 <容器名> dsh plugin --profile web add github:owner/repo
-docker exec -u 1000 <容器名> dsh plugin --profile web why @scope/some-plugin   # 看 profile 里现在有什么
-docker exec -u 1000 <容器名> dsh plugin --profile web remove @scope/some-plugin
-```
-
-`dsh plugin` 把参数原样转发给 profile 目录（默认 `/data/dsh/profiles/web`）里的 pnpm，启动时 launcher 会把该 profile 声明的层组合起来 —— **装完重启容器**才会加载。两个容易踩的点：
-
-- **必须用 uid 1000 执行**（`docker exec -u 1000 …`）。用 root 装，文件在 `/data` 里属 root，随后以 uid 1000 运行的 DSH 进程就读不到了。
-- **插件若还要调自己的命令行工具**，那个工具也得在 DSH 进程的 `PATH` 上：先按上一节把它装到 `/data` 下，entrypoint 下次启动就会带上它。
-
-除此之外镜像里不预装任何插件：你的插件是你的，且都在能扛过 `docker pull` + 重建的那个卷里。唯一的例外是远程登录插件——它**有意**待在镜像里（钉住一个发行 tag），好让默认安装就能从远程浏览器登录（见[下文](#用-deepseek-账号登录)）。
-
-## 用 DeepSeek 账号登录
-
-上游会把**你此刻打开界面的地址**交给 DeepSeek 平台，让平台把登录结果送回那里——而平台只接受*本机*地址。于是从另一台机器点「用 DeepSeek 账号登录」，在登录页打开之前就失败了（提示「操作未完成，请重试。」），变通办法一直是改用 API Key 或每次开 `ssh -L` 隧道。
-
-本镜像集成了 **[dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin)**——插件有独立仓库、独立 CI 与独立发版，镜像只钉住其中一个 tag——它会向平台注册一个 `127.0.0.1` 地址，并在有登录等待时把粘贴框放进 DSH 页面。你点「登录账号」，登录页照常打开；当标签页停在打不开的 `127.0.0.1` 页面时，把那个地址粘进已经自动出现的框里即可。**只多这一步**；把 `REMOTE_SIGNIN` 设为 `off`（见[设置](#可能会用到的设置)）就回到上游行为。原理与它刻意不动的东西见 [docs/remote-signin.zh-CN.md](docs/remote-signin.zh-CN.md)。
+装到 `/data` 下、用 **uid 1000** 装，再重启容器，它们就能扛过 `docker pull` 与重建——entrypoint 会把它们挂到 DSH 进程的 `PATH` 上。用 root 跑 `docker exec … npm i -g` 则一样都做不到。两份配方：[docs/extending.zh-CN.md](docs/extending.zh-CN.md)。
 
 ## 更新
 
@@ -147,7 +96,7 @@ docker compose up -d          # 或重建你自己的容器
 | 标签 | 含义 |
 |---|---|
 | `:latest` | 最新构建（含上游预发布版） |
-| `:0.2.1-alpha.4` | 钉住某个确切版本 |
+| `:0.2.1-alpha.5` | 钉住某个确切版本 |
 | `:alpha` · `:rc` · `:stable` | 跟随某个上游通道 |
 
 每小时有定时任务检查上游、重建并做冒烟测试，全部通过才发布。上游目前只有 alpha/rc，`:latest` 更新较频繁——想自己掌握节奏就钉版本标签。
@@ -177,9 +126,9 @@ Unraid 不需要专门的构建：在 Community Applications 里装 **DSH**，�
 | [docs/security.zh-CN.md](docs/security.zh-CN.md) | 口令门禁、Host/Origin 校验、`ALLOWED_CLIENTS`、403 排障 |
 | [docs/sandbox.zh-CN.md](docs/sandbox.zh-CN.md) | 为什么命令沙箱需要 bubblewrap 与那两个 `--security-opt` |
 | [docs/remote-signin.zh-CN.md](docs/remote-signin.zh-CN.md) | 从另一台机器用 DeepSeek **账号**登录 |
+| [docs/architecture.zh-CN.md](docs/architecture.zh-CN.md) | 容器里逐层跑着什么 |
+| [docs/extending.zh-CN.md](docs/extending.zh-CN.md) | 能扛过更新的命令行工具与插件 |
 | [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md) | 构建、测试、发布 |
-
-**已知限制。** 单用户设计：没有账户体系，能打开界面的人就是同一个工作区主人。远程浏览器用 DeepSeek **账号**登录要多一步粘贴（粘进页面自己弹出的面板）；用 API Key 则完全不需要。上游处于开发者预览阶段，破坏兼容性的变更属于预期之内——见开头的提示。镜像约 0.9 GB。
 
 ## 支持
 

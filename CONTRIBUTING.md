@@ -9,7 +9,9 @@ Nothing here may depend on that repository: the image must build and publish on 
 
 User-facing content is in [README.md](README.md) (English, the default) and
 [README.zh-CN.md](README.zh-CN.md) (Chinese); the two are kept in sync, so update both
-whenever you change one.
+whenever you change one. `scripts/check-docs.mjs` enforces what a script can: anchors and
+relative links that resolve, a `*.zh-CN.md` page linking the translated variant, and the two
+tracks of a document having the same number of `##` sections and the same setting names.
 
 ## Repository layout
 
@@ -23,7 +25,7 @@ whenever you change one.
 │   └── healthcheck.sh         # container HEALTHCHECK
 ├── compose.yaml               # non-Unraid users: the same settings as the CA template
 ├── scripts/                   # version resolution, dependency pruning, static gates, smoke test
-├── docs/                      # security, sandbox and remote sign-in notes
+├── docs/                      # security, sandbox, remote sign-in, architecture, extending
 └── .github/workflows/         # validate (every push) + release (tracks upstream releases)
 ```
 
@@ -41,7 +43,8 @@ docker build \
 # the token bootstrap, cross-site 403, both Caddy configs and the bwrap sandbox
 bash scripts/smoke.sh dsh:local
 
-# Static gates: exactly what CI runs (syntax, and the well-formedness of every YAML/JSON)
+# Static gates: exactly what CI runs (syntax, the documentation gate, and the
+# well-formedness of every YAML/JSON)
 bash scripts/check-static.sh
 ```
 

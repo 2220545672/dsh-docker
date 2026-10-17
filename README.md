@@ -1,86 +1,62 @@
 <h1 align="center">DSH — DeepSeek Harness in a container</h1>
 
-<p align="center"><a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a> — a coding agent you drive from the browser — packaged as one self-contained image for any Docker host. A command sandbox that works on kernels without Landlock, rebased and smoke-tested automatically for every upstream release.</p>
+<p align="center"><a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a> — a coding agent you drive from the browser — in one self-contained image for any Docker host. One port, two volumes, one command.</p>
 
-<p align="center"><b>English</b> · <a href="README.zh-CN.md">中文说明</a></p>
+<p align="center"><b>English</b> · <a href="README.zh-CN.md">中文说明</a><br>
+<a href="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
+<a href="https://github.com/2220545672/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/2220545672/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
+<img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
+<img src="https://img.shields.io/badge/license-MIT-green" alt="license"></p>
 
-<p align="center">
-  <a href="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
-  <a href="https://github.com/2220545672/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/2220545672/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
-  <img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
-</p>
-
----
-
-> **Developer preview.** DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.** — quoted from the [upstream project](https://github.com/deepseek-ai/deepseek-harness#developer-preview). This image tracks upstream releases automatically, so pin a [version tag](#update) if you would rather move on your own schedule.
+> **Developer preview.** Upstream iterates fast and will break compatibility. This image tracks it automatically — pin a [version tag](#update) if you would rather move on your own schedule.
 
 ## Why this image
 
-- **Plugins — and the CLIs they call — survive an update.** Both live under `/data`, not in
-  the image, so recreating the container does not remove them: [plugins](#installing-plugins)
-  are installed into the profile on the volume, and the entrypoint puts the CLIs on the
-  PATH of the DSH process ([Installing your own CLI tools](#installing-your-own-cli-tools)).
-- **DeepSeek account sign-in works from a remote browser.** Upstream only completes the
-  sign-in when the browser runs on the same machine as DSH. This image ships
-  [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin) and enables it by
-  default: the login tab ends on a dead `127.0.0.1` page and the paste panel appears in
-  the DSH page — one extra step, nothing else
-  ([docs/remote-signin.md](docs/remote-signin.md); `REMOTE_SIGNIN=off` opts out).
-- **It tracks upstream — and tests what it publishes.** An hourly job resolves the newest
-  `@deepseek-ai/dsh` version on npm, builds the image for amd64 and arm64, runs the whole
-  smoke suite against the built container, and publishes only when every check passes:
-  `:latest` is never an untested build ([Update](#update)).
+| | Running upstream yourself | `ghcr.io/2220545672/dsh` |
+|---|---|---|
+| Start | the npm package, wired up by hand | `docker compose up -d` |
+| Command sandbox on a kernel without Landlock (Unraid 7.x, some appliance kernels) | will not start | works — bubblewrap is bundled, the two `--security-opt` values are in [`compose.yaml`](compose.yaml) |
+| DeepSeek **account** sign-in from another machine | fails before the login page opens | built in, one paste step ([details](docs/remote-signin.md)) |
+| The CLIs your plugins shell out to | you put them on `PATH` | install under `/data`, [picked up at start](docs/extending.md) — and survive `docker pull` + recreate |
+| Keeping up with upstream | your job | hourly: resolve → build amd64 + arm64 → smoke test → publish, and only if every check passes |
+
+**Known limits.** Single-user by design — there is no account database, so everyone who
+reaches the UI acts as the same owner. A DeepSeek **account** sign-in from another machine
+costs one paste into a panel the page shows by itself; an API key skips it entirely. About
+0.9 GB on disk.
 
 ## Quick start
 
 ```bash
+docker compose up -d          # compose.yaml already carries the settings below
+```
+
+Open **`http://<your-host>:8080`** and log in as `dsh`; the password was printed once:
+
+```bash
+docker logs dsh | grep -i password
+```
+
+<details>
+<summary>Plain <code>docker run</code> instead</summary>
+
+```bash
 docker run -d --name dsh --restart unless-stopped -p 8080:8080 \
-  -e ALLOWED_CLIENTS=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10 \
+  -e ALLOWED_CLIENTS=127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10,fc00::/7,fe80::/10 \
   -v "$PWD/dsh/data:/data" \
   -v "$PWD/dsh/workspace:/workspace" \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
   ghcr.io/2220545672/dsh:latest
 ```
 
-Then open **`http://<your-host>:8080`** and log in with user `dsh` and the password printed once in the log (`docker logs dsh`).
+</details>
 
-Or use Compose — [`compose.yaml`](compose.yaml) carries the same settings:
+**Then:** set `DSH_PASSWORD`, point the agent at your project (the directory picker opens in
+`/workspace`, where `~/workspace` is a symlink), and add an API key — or sign in with your
+DeepSeek account.
 
-```bash
-docker compose up -d
-```
-
-Three things that catch people out on the first run:
-
-- **`ALLOWED_CLIENTS` is not optional when you write the command yourself.** The image's own default is loopback only — that is what keeps a freshly published port from being an open door — so a browser on another machine gets `403` until you add your network. `compose.yaml` already ships the line above.
-- **Both `--security-opt` values are required on kernels without Landlock** (Unraid 7.x, several appliance kernels), otherwise the agent's command sandbox cannot start. On a Landlock-capable kernel you may drop them. The reasoning, the controlled experiments and the two checks that produce false alarms are in [docs/sandbox.md](docs/sandbox.md).
-- **`/data` and `/workspace` must be persistent.** Sessions, credentials and the agent home live in `/data`; your projects live in `/workspace`.
-
-## First five minutes
-
-1. **Change the password.** Without `DSH_PASSWORD` the container generated one and printed it once — `docker logs <container>`. Set `DSH_PASSWORD` (or `DSH_PASSWORD_FILE`) to choose your own; the user name defaults to `dsh` (`AUTH_USER`).
-2. **Point it at your project.** The agent works in `/workspace`, and the directory picker starts there (`~/workspace` is a symlink to it).
-3. **Add a DeepSeek API key** — *Add API key* in the settings panel. A DeepSeek **account** also works from any browser: a paste box appears in the page itself once the login tab dies on `127.0.0.1` — see [docs/remote-signin.md](docs/remote-signin.md).
-
-## How it is put together
-
-One container, two processes, one port:
-
-```text
-browser ──▶ :8080  Caddy (bundled)  ──▶ 127.0.0.1:3080  DSH
-                     ├─ optional password gate (on by default)
-                     ├─ allowlist: ALLOWED_CLIENTS
-                     ├─ security headers, host/origin checks
-                     └─ /healthz for the container healthcheck
-```
-
-- **The reverse proxy is already in the image.** Caddy serves the port you publish and forwards to DSH, which listens on loopback only — so the published port is the single way in, and the proxy is the layer that adds the security headers, refuses cross-site calls and blocks the endpoints that make no sense remotely. There is nothing extra to install or configure.
-- **Authentication is optional, and it is one switch.** `AUTH_MODE=builtin` (the default) asks for a password once through the browser's ordinary login prompt, then keeps you signed in with a cookie that also covers the WebSocket; `AUTH_MODE=none` hands that job to whatever sits in front (a reverse proxy with SSO, a VPN, a trusted LAN). Any other value refuses to start instead of booting unprotected — and never stack two logins. The container's own healthcheck stays open either way.
-- **The allowlist lives at the same layer.** `ALLOWED_CLIENTS` decides who may reach the container at all; loopback is always allowed, which is what keeps the healthcheck working.
-- **It runs unprivileged.** uid 1000, no docker socket, no host directories beyond the two volumes you map. Credentials are stored in `/data` — the reason that volume must be persistent.
-- **The command sandbox has two legs**: bubblewrap (bundled here, unlike most community images) and Landlock (upstream's `landlock-run`, which needs a kernel that compiled it in). Where Landlock is missing, bubblewrap plus the two `--security-opt` values is what keeps model-generated commands inside the workspace: [docs/sandbox.md](docs/sandbox.md).
-- **A password over plain HTTP is not safe on the internet.** The gate protects the app, not the wire: terminate TLS in whatever you put in front before exposing this. Details: [docs/security.md](docs/security.md).
+`403`, `SANDBOX_UNAVAILABLE`, or a login tab that dies on `127.0.0.1`? All three are in
+[Problems](#problems), with the commands that tell a real failure from a false alarm.
 
 ## Settings you may need
 
@@ -98,83 +74,25 @@ browser ──▶ :8080  Caddy (bundled)  ──▶ 127.0.0.1:3080  DSH
 | `REMOTE_SIGNIN` | `on` | DeepSeek **account** sign-in from a remote browser: loads [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin), which puts the paste panel into the page. `off` = upstream's loopback-only behaviour. |
 | `TZ` | `Asia/Shanghai` in `compose.yaml` | Container time zone. |
 
-Already running SSO (Authelia, Authentik, a NAS portal, …)? Set `AUTH_MODE=none` and `PUBLIC_URL`, and **do not stack a second login**.
+Already running SSO (Authelia, Authentik, a NAS portal, …)? `AUTH_MODE=none` plus
+`PUBLIC_URL`, and **do not stack a second login** — the proxy itself has to be in
+`ALLOWED_CLIENTS`, and [docs/security.md](docs/security.md) explains that trade-off:
+
+```yaml
+# compose.yaml overrides, behind an authenticating reverse proxy
+environment:
+  AUTH_MODE: none                       # the proxy authenticates
+  PUBLIC_URL: https://dsh.example.com   # Host is rewritten to it; foreign Origins are rejected
+  TRUSTED_PROXY_CIDRS: 172.30.0.0/24    # optional: judge the real client IP from X-Forwarded-For
+```
 
 Volumes are taken over as `1000:1000`. Leave that alone — it is not a NAS's usual `99:100`.
 
-## Installing your own CLI tools
+## Your own CLI tools and plugins
 
-`docker exec … npm i -g` is a trap: the global prefix lives in the image's layered
-filesystem, so the tool is gone the next time the container is recreated. Install under
-`/data` instead and it survives every update — the entrypoint puts two layouts on the
-PATH of the DSH process (and of everything DSH spawns, which is what a plugin shells out
-to):
-
-```bash
-# an npm CLI — no symlink needed, tools/<name>/node_modules/.bin is picked up as it is
-docker exec -u 1000 <container> npm i --prefix /data/dsh/tools/codegraph @colbymchenry/codegraph
-
-# a single binary — drop it in, or symlink it from wherever it was installed
-docker exec -u 1000 <container> ln -s /data/dsh/tools/codegraph/node_modules/.bin/codegraph /data/dsh/bin/codegraph
-```
-
-Both are scanned once at start — `/data/dsh/bin` and every
-`/data/dsh/tools/*/node_modules/.bin` (`DSH_HOME` is `/data/dsh` unless you moved it) —
-and **appended** to `PATH`, never prepended, so nothing you install can shadow the
-image's own `node`, `git` or `curl`. With neither directory present nothing changes at
-all, and the container says so in its log when something was picked up:
-
-```text
-[entrypoint] operator tools on PATH: /data/dsh/bin:/data/dsh/tools/codegraph/node_modules/.bin
-```
-
-Restart the container after installing (the scan runs once, at boot). `docker exec`
-sessions keep the image's own `PATH` — inside those, call the tool by its absolute path.
-
-## Installing plugins
-
-A DSH plugin is loaded from the **profile**, which lives on the persistent volume — so a
-plugin you add is still installed after the container is recreated:
-
-```bash
-docker exec -u 1000 <container> dsh plugin --profile web add @scope/some-plugin
-docker exec -u 1000 <container> dsh plugin --profile web add github:owner/repo
-docker exec -u 1000 <container> dsh plugin --profile web why @scope/some-plugin   # what the profile carries
-docker exec -u 1000 <container> dsh plugin --profile web remove @scope/some-plugin
-```
-
-`dsh plugin` forwards its arguments to pnpm inside `$DSH_HOME/profiles/web`
-(`/data/dsh/profiles/web` by default), and the launcher composes whatever that profile
-declares — restart the container to load it. Two details that bite:
-
-- **Run it as uid 1000** (`docker exec -u 1000 …`). As root the package lands in `/data`
-  owned by root, and the DSH process — uid 1000 — can no longer read it.
-- **A plugin that shells out to its own command-line tool** needs that tool on the PATH of
-  the DSH process as well; install it under `/data` first
-  ([Installing your own CLI tools](#installing-your-own-cli-tools)) and the entrypoint
-  picks it up at the next start.
-
-Nothing else is installed into the image: your plugins are yours, and they sit on the
-volume that survives `docker pull` and a recreate. The remote sign-in plugin is the one
-deliberate exception — it ships inside the image, pinned to a release tag, so that a
-default install can sign in from a remote browser ([below](#signing-in-with-a-deepseek-account)).
-
-## Signing in with a DeepSeek account
-
-Upstream hands the platform the address **you are browsing from** and asks it to deliver
-the login there — and the platform only accepts a *local* one. So pressing *Sign in* with
-a DeepSeek account from another machine fails before a login page ever opens ("Could not
-complete the operation. Try again."), and the workarounds are an API key or an `ssh -L`
-tunnel.
-
-This image ships **[dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin)**
-— the plugin has its own repository, its own CI and its own release tags, and the image
-pins one of those tags — which registers a `127.0.0.1` address with the platform and puts
-a paste box into the DSH page while a sign-in waits. You press *Sign in*, the login page
-opens, and when the tab lands on the dead `127.0.0.1` page you paste that address into
-the box that has appeared. That paste is the only step it adds; `REMOTE_SIGNIN=off`
-gives you upstream behaviour back. How it works and what it deliberately leaves alone:
-[docs/remote-signin.md](docs/remote-signin.md).
+Install under `/data` as **uid 1000**, restart the container, and they survive `docker pull`
+and a recreate — the entrypoint then puts them on the DSH process's `PATH`. A global
+`npm i -g` as root does none of that. Both recipes: [docs/extending.md](docs/extending.md).
 
 ## Update
 
@@ -188,7 +106,7 @@ Everything in `/data` and `/workspace` survives.
 | Tag | Meaning |
 |---|---|
 | `:latest` | Newest build, upstream prereleases included |
-| `:0.2.1-alpha.4` | Pin an exact version |
+| `:0.2.1-alpha.5` | Pin an exact version |
 | `:alpha` · `:rc` · `:stable` | Follow one upstream channel |
 
 An hourly job checks upstream, rebuilds and smoke-tests the image, and publishes only when the checks pass. Upstream currently ships alpha/rc builds, so `:latest` moves often — pin a version tag if you would rather update on your own schedule.
@@ -220,9 +138,9 @@ are at **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**.
 | [docs/security.md](docs/security.md) | Password gate, host/origin checks, `ALLOWED_CLIENTS`, 403 troubleshooting |
 | [docs/sandbox.md](docs/sandbox.md) | Why the agent's command sandbox needs bubblewrap and those two `--security-opt` values |
 | [docs/remote-signin.md](docs/remote-signin.md) | Signing in with a DeepSeek **account** from another machine |
+| [docs/architecture.md](docs/architecture.md) | What runs inside the container, layer by layer |
+| [docs/extending.md](docs/extending.md) | CLI tools and plugins that survive an update |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, testing, releasing |
-
-**Known limits.** Single-user by design: there is no account database, so everyone who reaches the UI acts as the same owner. DeepSeek **account** sign-in from a remote browser costs one paste step into a panel the page shows by itself; an API key skips it entirely. Upstream is in developer preview, so breaking changes are expected — see the notice at the top. About 0.9 GB on disk.
 
 ## Support
 

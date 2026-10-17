@@ -8,7 +8,9 @@ Applications 模板、图标、CA 提交说明与迁移指南——在
 镜像必须能独立构建与发布。
 
 面向用户的文档是 [README.md](README.md)（英文，默认）与 [README.zh-CN.md](README.zh-CN.md)
-（中文）；两者保持一致，改一个就同步另一个。
+（中文）；两者保持一致，改一个就同步另一个。`scripts/check-docs.mjs` 负责机器能查的那部分：
+锚点与相对链接必须能解析、`*.zh-CN.md` 必须链到对应的中文页、同一文档的两条语言轨必须有
+相同数量的 `##` 章节与相同的设置名。
 
 ## 仓库结构
 
@@ -22,7 +24,7 @@ Applications 模板、图标、CA 提交说明与迁移指南——在
 │   └── healthcheck.sh         # 容器 HEALTHCHECK
 ├── compose.yaml               # 非 Unraid 用户：与 CA 模板同一套设置
 ├── scripts/                   # 版本解析、依赖瘦身、静态闸门、冒烟测试
-├── docs/                      # 安全模型、沙箱、远程登录说明
+├── docs/                      # 安全模型、沙箱、远程登录、整体结构、扩展
 └── .github/workflows/         # validate（每次 push）+ release（跟随上游发版）
 ```
 
@@ -40,7 +42,7 @@ docker build \
 # 两份 Caddy 配置与 bwrap 沙箱
 bash scripts/smoke.sh dsh:local
 
-# 静态闸门：与 CI 完全一致（语法，以及所有 YAML/JSON 的结构正确性）
+# 静态闸门：与 CI 完全一致（语法、文档闸门，以及所有 YAML/JSON 的结构正确性）
 bash scripts/check-static.sh
 ```
 

@@ -8,7 +8,8 @@
 # build, push and tag an image. Both call this, which makes "the checks failed"
 # imply "nothing ships".
 #
-# Coverage: shell syntax, node syntax, and the well-formedness of every YAML and
+# Coverage: shell syntax, node syntax, the documentation gate (anchors, relative
+# links, and the English/Chinese pairs), and the well-formedness of every YAML and
 # JSON file. Tool-based linting (shellcheck, hadolint, `caddy validate`) stays in
 # validate.yml, and release.yml additionally builds the image and smoke-tests the
 # running container before publishing.
@@ -35,6 +36,14 @@ for file in scripts/*.mjs; do
   node --check "${file}"
   printf 'node --check ok: %s\n' "${file}"
 done
+
+echo
+echo '== documentation =='
+# Anchors, relative links, and the English/Chinese tracks of every document that has
+# both. The self-test runs here as well: a gate that has quietly stopped biting is
+# worse than no gate, and it costs a few milliseconds.
+node scripts/check-docs.mjs
+node scripts/check-docs.mjs --self-test
 
 echo
 echo '== yaml and json well-formedness =='
