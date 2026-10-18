@@ -136,6 +136,29 @@
 		}
 	}
 
+	# The plugin hub — the plugin store (github.com/dshplugin/dsh-plugin-hub) — accepts a
+	# POST only when Host is a loopback authority, and with an Origin attached it must be
+	# the same loopback authority; anything else is answered 403 "untrusted origin"
+	# (its CSRF defence, dsh-plugin-hub#72). Edge mode presents Host as the public
+	# authority because that is what DSH's own fence requires, so every install, update and
+	# uninstall started from the store failed until this route existed. For the hub's paths
+	# only, present what lan mode presents globally — a loopback Host and no Origin. The
+	# hub accepts a missing Origin by design (only a native client can omit one, and such a
+	# client can forge any Origin anyway), the @unexpected_origin guard below still refuses
+	# a foreign Origin before it reaches here, and the hub's DNS-rebinding defence is
+	# untouched: Host stays loopback, which is the whole of what it checks.
+	#
+	# The Host must be re-set *after* the shared header list, or `import` puts the public
+	# authority back and the 403 returns.
+	route /dsh-plugin-hub/* {
+		respond @unexpected_origin "Forbidden" 403
+		reverse_proxy 127.0.0.1:{$DSH_INTERNAL_PORT} {
+			import dsh_upstream_headers
+			header_up Host 127.0.0.1:{$DSH_INTERNAL_PORT}
+			header_up -Origin
+		}
+	}
+
 	route {
 		respond @unexpected_origin "Forbidden" 403
 		rewrite @dsh_bootstrap /?token={$DSH_LAUNCH_TOKEN}
