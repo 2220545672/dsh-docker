@@ -151,12 +151,20 @@ COPY docker/Caddyfile.edge docker/Caddyfile.lan /etc/caddy/
 # the file itself.
 COPY docker/remote-signin.patch.yml /etc/dsh/remote-signin.patch.yml
 
+# pnpm is what `dsh plugin` installs plugins with. Keep it on the newest release: a
+# profile's node_modules records the pnpm major that built it, and pnpm refuses to modify
+# a tree built by another major (ERR_PNPM_UNEXPECTED_STORE) — an old pin here is exactly
+# what produced that mismatch for profiles built by an earlier image. The version is an
+# ARG rather than a bare `pnpm` install so a rebuild follows this line, not `latest`
+# silently.
+ARG PNPM_VERSION=12
+
 RUN set -eux; \
     chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh /usr/local/bin/caddy; \
     chmod 0644 /etc/dsh/remote-signin.patch.yml; \
     printf '#!/bin/sh\nexec node /app/node_modules/@deepseek-ai/dsh/lib/bin.js "$@"\n' > /usr/local/bin/dsh; \
     chmod 0755 /usr/local/bin/dsh; \
-    npm install --global --no-audit --no-fund pnpm@10; \
+    npm install --global --no-audit --no-fund "pnpm@${PNPM_VERSION}"; \
     pnpm --version; \
     rm -rf /root/.npm; \
     printf 'DSH_VERSION=%s\nCADDY_VERSION=%s\n' "${DSH_VERSION}" "${CADDY_VERSION}" > /etc/dsh-version; \
