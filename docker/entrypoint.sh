@@ -139,10 +139,17 @@ read_image_version() {
 
 # PUID/PGID have to be usable before anything else happens: they decide which identity
 # owns the volumes, and a wrong value (a typo, or 0) has to be refused here rather than
-# half-applied. Refused: not a positive integer, a uid or gid the image's own system
-# accounts already hold (root 0, nobody 65534, the daemons between 1 and 999), and a
-# value outside uid_t's range. `node` itself is allowed: 1000 is the default, and a NAS
-# that says 1000 means it.
+# half-applied. Refused: not a positive integer, 0 (the container's own root), 65534
+# (`nobody`, the uid a kernel hands to an unmapped one — never an identity to run an
+# agent as), and a value outside uid_t's range.
+#
+# Numbers that merely *collide with a name* are accepted on purpose, and that is a
+# correction: the obvious check ("refuse a uid the image's own system accounts hold")
+# refuses the very deployment this feature exists for, because Debian's gid 100 is
+# literally called `users`. Unraid's appdata is 99:100. A uid:gid pair is a number — the
+# container's account database names are irrelevant to what a process owns — so the only
+# collisions worth stopping are the two that change what the process means: root and
+# nobody. The passwd entry is synthesized separately (see sync_app_account).
 resolve_identity() {
     [[ "${PUID}" =~ ^[0-9]{1,10}$ ]] || fatal "PUID must be a positive integer (got '${PUID}')"
     [[ "${PGID}" =~ ^[0-9]{1,10}$ ]] || fatal "PGID must be a positive integer (got '${PGID}')"
@@ -152,19 +159,8 @@ resolve_identity() {
     (( APP_GID > 0 )) || fatal "PGID must not be 0: group 0 is root's group"
     (( APP_UID < 4294967295 )) || fatal "PUID is outside the range of uid_t (got '${PUID}')"
     (( APP_GID < 4294967295 )) || fatal "PGID is outside the range of gid_t (got '${PGID}')"
-
-    local line id name clash=""
-    while IFS=: read -r name _ id _; do
-        [[ "${id}" == "${APP_UID}" ]] || continue
-        [[ "${name}" == "node" ]] && continue
-        clash="uid ${APP_UID} is the image's own '${name}' account"
-    done < /etc/passwd
-    while IFS=: read -r name _ id _; do
-        [[ "${id}" == "${APP_GID}" ]] || continue
-        [[ "${name}" == "node" ]] && continue
-        clash="${clash:+${clash}; }gid ${APP_GID} is the image's own '${name}' group"
-    done < /etc/group
-    [[ -z "${clash}" ]] || fatal "PUID/PGID collide with the image's system accounts: ${clash}. Use the uid:gid that owns your data directory — Unraid's appdata is usually 99:100."
+    (( APP_UID != 65534 )) || fatal "PUID must not be 65534: that is 'nobody', the identity a kernel gives to an unmapped uid — pick the uid that owns your data directory (Unraid's appdata is usually 99)"
+    (( APP_GID != 65534 )) || fatal "PGID must not be 65534: that is 'nogroup' — pick the gid that owns your data directory (Unraid's appdata is usually 100)"
 }
 
 validate_umask() {
