@@ -515,57 +515,96 @@ if docker exec --user 1000:1000 "${NAME}" sh -c '/data/dsh/bin/smoke-flat >/dev/
 else
     fail 'tools in the persistent volume are not executable by the account DSH runs as'
 fi
-
 # 5d — PUID/PGID. The identity is a setting now, and what has to survive it is ownership:
 # on a NAS the directory behind /data already belongs to somebody else, and a process
 # running as a third identity can neither read what is there nor write what it creates.
-# Three claims, all of them quietly false before: a container runs as the configured pair
-# and reads the profile a *root* install left behind (a mode-0600 `package.json` three
-# directories deep — the depth the handover has to reach), a second start does not hand
-# the volume over again, and an unusable pair stops the container instead of half-applying
-# it. `~` is asserted too: `setpriv` drops to a bare uid:gid pair, so nothing but the
-# passwd entry the entrypoint synthesizes makes the home resolve.
+# The state under test is the one a real install leaves behind — a profile DSH wrote
+# itself, and then a file a command run as root touched — so the volume starts empty, DSH
+# initializes it as PUID, and only then is a 0600 file dropped into `profiles/web/` and
+# made root's, the shape of the original accident.
+#
+# Two things this block had to learn the hard way, both of them about what *not* to
+# assert: a hand-written `profiles/web/package.json` (no `node_modules`, no
+# `cordis.patch.yml`) makes DSH refuse to start, so a seeded profile tests nothing and
+# reports the refusal as an identity failure; and "the app answers 303" is not the
+# readiness signal here — on a volume this fresh Caddy answers 403, which is a container
+# that works. Readiness is therefore the entrypoint's own "starting Caddy" line plus a
+# response that is not a connection error, and every claim about identity is asserted
+# against `docker exec --user`.
 IDENT_NAME="${NAME}-puid"
 IDENT_PORT=$((PORT + 6))
 IDENT_DATA="${WORKDIR}/data-puid"
 IDENT_UID=99
 IDENT_GID=100
 IDENT_ID="${IDENT_UID}:${IDENT_GID}"
-mkdir -p "${IDENT_DATA}/dsh/profiles/web" "${WORKDIR}/workspace-puid"
-printf '{"name":"dsh-profile-web","private":true}\n' > "${IDENT_DATA}/dsh/profiles/web/package.json"
-chmod 0600 "${IDENT_DATA}/dsh/profiles/web/package.json"
-# Root's, as an install run through `docker exec` (which defaults to the container's
-# root) leaves it: the volume is mounted into a throwaway root container to chown it.
-docker run --rm --volume "${IDENT_DATA}:/data" --user 0:0 --entrypoint chown "${IMAGE}" -R 0:0 /data \
-    >/dev/null 2>&1 || fail 'could not seed the root-owned volume (the PUID assertions below are not meaningful without it)'
+mkdir -p "${IDENT_DATA}" "${WORKDIR}/workspace-puid"
 docker run --detach --name "${IDENT_NAME}" \
     --env 'ALLOWED_CLIENTS=127.0.0.1,172.16.0.0/12' \
     --env "PUID=${IDENT_UID}" \
     --env "PGID=${IDENT_GID}" \
     --env 'DSH_PASSWORD=smoke-test-password' \
+    --env 'REMOTE_SIGNIN=off' \
     --publish "127.0.0.1:${IDENT_PORT}:8080" \
     --volume "${IDENT_DATA}:/data" \
     --volume "${WORKDIR}/workspace-puid:/workspace" \
     "${IMAGE}" >/dev/null
-for _ in $(seq 1 30); do
-    if curl --silent --fail --max-time 3 "http://127.0.0.1:${IDENT_PORT}/healthz" >/dev/null 2>&1; then break; fi
-    sleep 2
-done
-if [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "${SMOKE_AUTH[@]}" "http://127.0.0.1:${IDENT_PORT}/")" == '303' ]]; then
+
+ident_serves() { # the app answers at all (any HTTP status but a connection error)
+    local code
+    code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
+        "${SMOKE_AUTH[@]}" "http://127.0.0.1:${IDENT_PORT}/" 2>/dev/null || true)"
+    [[ "${code}" =~ ^[1-4][0-9]{2}$ ]]
+}
+ident_wait() { # 60 s for the entrypoint's last line, then confirm something answers
+    local _ code
+    for _ in $(seq 1 30); do
+        if docker logs "${IDENT_NAME}" 2>&1 | grep --quiet 'starting Caddy'; then
+            ident_serves && return 0
+        fi
+        sleep 2
+    done
+    code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "${SMOKE_AUTH[@]}" "http://127.0.0.1:${IDENT_PORT}/" 2>/dev/null || true)"
+    printf 'note the PUID container did not serve: HTTP %s; last log lines: %s\n' \
+        "${code:-none}" "$(docker logs "${IDENT_NAME}" 2>&1 | tail -n 3 | tr '\n' ' ')"
+    return 1
+}
+
+if ident_wait; then
     pass "a container configured with PUID/PGID=${IDENT_ID} serves the app"
 else
     fail "PUID/PGID=${IDENT_ID} did not produce a working container"
 fi
-if docker exec --user "${IDENT_ID}" "${IDENT_NAME}" sh -c 'cat /data/dsh/profiles/web/package.json >/dev/null' 2>/dev/null; then
-    pass 'the root-owned 0600 profile is readable as PUID (the handover reached it)'
+
+# The accident: a root-owned 0600 file where DSH writes, written through the root identity
+# `docker exec` gives by default. Nothing should be readable to PUID at this point.
+if docker exec --user 0:0 "${IDENT_NAME}" sh -c '
+    printf "{\"note\":\"a root-owned file, to be handed over\"}\n" > /data/dsh/profiles/web/ofm-probe.json
+    chmod 0600 /data/dsh/profiles/web/ofm-probe.json
+    chown 0:0 /data/dsh/profiles/web/ofm-probe.json
+' 2>/dev/null; then
+    if docker exec --user "${IDENT_ID}" "${IDENT_NAME}" sh -c 'cat /data/dsh/profiles/web/ofm-probe.json >/dev/null' 2>/dev/null; then
+        note 'the root-owned probe is readable to PUID before the handover, so the assertion below is weaker than intended'
+    fi
 else
-    fail 'a root-owned 0600 profile stayed unreadable after the handover; DSH would fail with EACCES on its own profile'
+    fail 'could not write the root-owned probe into the profile'
 fi
-IDENT_OWNER="$(stat --format='%u:%g' "${IDENT_DATA}/dsh/profiles/web/package.json" 2>/dev/null || printf '?')"
-if [[ "${IDENT_OWNER}" == "${IDENT_ID}" ]]; then
-    pass "the profile now belongs to ${IDENT_ID}"
+
+docker restart "${IDENT_NAME}" >/dev/null
+if ident_wait; then
+    pass 'the container still serves after the volume carried a root-owned file'
 else
-    fail "the profile still belongs to ${IDENT_OWNER:-?}, expected ${IDENT_ID}"
+    fail 'a root-owned file in the profile broke the next start'
+fi
+if docker exec --user "${IDENT_ID}" "${IDENT_NAME}" sh -c 'cat /data/dsh/profiles/web/ofm-probe.json >/dev/null' 2>/dev/null; then
+    pass 'the root-owned 0600 file is readable as PUID (the handover reached it)'
+else
+    fail 'a root-owned 0600 file stayed unreadable after the handover; DSH would fail with EACCES on its own profile'
+fi
+IDENT_OWNER="$(stat --format='%u:%g' "${IDENT_DATA}/dsh/profiles/web/ofm-probe.json" 2>/dev/null || printf '?')"
+if [[ "${IDENT_OWNER}" == "${IDENT_ID}" ]]; then
+    pass "the file now belongs to ${IDENT_ID}"
+else
+    fail "the file still belongs to ${IDENT_OWNER:-?}, expected ${IDENT_ID}"
 fi
 if docker exec --user "${IDENT_ID}" "${IDENT_NAME}" sh -c 'test "$(id -un)" = dsh && test "$(getent passwd "$(id -u)" | cut -d: -f6)" = "$HOME"' 2>/dev/null; then
     pass 'the configured uid resolves an account and a home (~ is not /)'
@@ -579,25 +618,32 @@ else
     fail "the app ran as uid ${IDENT_UID_SEEN:-?}, expected ${IDENT_UID}"
 fi
 
-HANDOVERS_BEFORE="$(docker logs "${IDENT_NAME}" 2>&1 | grep --count 'ownership of /data/dsh' || true)"
+HANDOVERS="$(docker logs "${IDENT_NAME}" 2>&1 | grep --count 'ownership of /data/dsh' || true)"
 docker restart "${IDENT_NAME}" >/dev/null
-for _ in $(seq 1 30); do
-    if curl --silent --fail --max-time 3 "http://127.0.0.1:${IDENT_PORT}/healthz" >/dev/null 2>&1; then break; fi
-    sleep 2
-done
-HANDOVERS_AFTER="$(docker logs "${IDENT_NAME}" 2>&1 | grep --count 'ownership of /data/dsh' || true)"
-if [[ "${HANDOVERS_BEFORE}" == '1' && "${HANDOVERS_AFTER}" == '1' ]]; then
+ident_wait || true
+HANDOVERS_AGAIN="$(docker logs "${IDENT_NAME}" 2>&1 | grep --count 'ownership of /data/dsh' || true)"
+if [[ "${HANDOVERS}" == '1' && "${HANDOVERS_AGAIN}" == '1' ]]; then
     pass 'the volume handover happens once, not on every start'
 else
-    fail "the handover ran ${HANDOVERS_BEFORE} time(s), then ${HANDOVERS_AFTER}; it has to be idempotent"
+    fail "the handover ran ${HANDOVERS} time(s), then ${HANDOVERS_AGAIN}; it has to be idempotent"
 fi
 docker rm -f "${IDENT_NAME}" >/dev/null 2>&1 || true
 
-for bad in 'PUID=0' 'PGID=0' 'PUID=abc'; do
-    if docker run --rm --env "${bad}" --env 'DSH_PASSWORD=smoke-test-password' "${IMAGE}" >/dev/null 2>&1; then
-        fail "${bad} was accepted; an unusable identity has to stop the container"
+# Each has to be *refused*, and the refusal has to be the entrypoint's own: a container
+# that starts anyway keeps running until the timeout (exit 124), and a container that
+# stops for some other reason says so in its log — the positive assertion is that DSH
+# never got as far as starting. `--no-healthcheck`: nothing here should serve anything.
+for bad in 'PUID=0:PUID must not be 0' 'PGID=0:PGID must not be 0' 'PUID=abc:PUID must be a positive integer'; do
+    bad_env="${bad%%:*}"
+    bad_want="${bad#*:}"
+    bad_log="$(timeout 30 docker run --rm --no-healthcheck \
+        --env "${bad_env}" --env 'DSH_PASSWORD=smoke-test-password' --env 'AUTH_MODE=none' \
+        "${IMAGE}" 2>&1 || true)"
+    if grep --quiet --fixed-strings "${bad_want}" <<<"${bad_log}" \
+        && ! grep --quiet 'starting DeepSeek Harness' <<<"${bad_log}"; then
+        pass "${bad_env} stops the container"
     else
-        pass "${bad} stops the container"
+        fail "${bad_env} did not stop the container with its own message"
     fi
 done
 
