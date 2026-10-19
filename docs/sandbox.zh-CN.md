@@ -72,7 +72,7 @@ docker run --rm --entrypoint bwrap ghcr.io/2220545672/dsh:latest --version
 docker run --rm \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
   --entrypoint setpriv ghcr.io/2220545672/dsh:latest \
-  --reuid 1000 --regid 1000 --init-groups \
+  --reuid <PUID> --regid <PGID> --clear-groups \
   bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent \
     --tmpfs /tmp --bind /workspace /workspace -- /bin/sh -c "echo SANDBOX_OK"
 ```
@@ -83,7 +83,7 @@ docker run --rm \
 
 **手工自查前要知道两件事**（都出过误报）：
 
-* **必须用 uid 1000 测，不能用 root。** `docker exec` 默认身份是 root，而容器里的 root 没有 `CAP_SYS_ADMIN`，bwrap 在那里**必然**报 `Creating new namespace failed: Operation not permitted`。DSH 自己是以 uid 1000 运行的（`docker top <容器> -o user,args` 可查），uid 1000 下 bwrap 正常。DSH 自己的就绪探测就是 `bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true`（read-only 策略）——退出码 0 就说明 DSH 会选中 bwrap 且 enforcement=full。
+* **必须用 `PUID` 测，不能用 root。** `docker exec` 默认身份是 root，而容器里的 root 没有 `CAP_SYS_ADMIN`，bwrap 在那里**必然**报 `Creating new namespace failed: Operation not permitted`。DSH 自己是以 `PUID` 运行的（`docker top <容器> -o user,args` 可查），`PUID` 下 bwrap 正常。DSH 自己的就绪探测就是 `bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true`（read-only 策略）——退出码 0 就说明 DSH 会选中 bwrap 且 enforcement=full。
 * **`systempaths=unconfined` 在 `docker inspect` 里看不见。** 它不出现在 `HostConfig.SecurityOpt`（那里只有 `seccomp=unconfined`），它的表现是 `MaskedPaths` 与 `ReadonlyPaths` 变成**空数组**；如果是 `null`，才是这个参数真的没生效。
 
 `--cap-add SYS_ADMIN` 和 `--privileged` **都不需要**——它们只是让 bwrap 能在 *root* 下工作，而 DSH 从不用 root 跑命令，两者还会削弱容器隔离。
