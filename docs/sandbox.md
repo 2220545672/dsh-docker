@@ -72,7 +72,7 @@ docker run --rm --entrypoint bwrap ghcr.io/2220545672/dsh:latest --version
 docker run --rm \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
   --entrypoint setpriv ghcr.io/2220545672/dsh:latest \
-  --reuid 1000 --regid 1000 --init-groups \
+  --reuid <PUID> --regid <PGID> --clear-groups \
   bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent \
     --tmpfs /tmp --bind /workspace /workspace -- /bin/sh -c "echo SANDBOX_OK"
 ```
@@ -83,7 +83,7 @@ Verifying inside DSH (the most direct way): just have it run any command, for ex
 
 Two things to know before you check by hand, because both have produced false reports:
 
-* **Run the test as uid 1000, never as root.** `docker exec` defaults to root, and root inside the container has no `CAP_SYS_ADMIN`, so bwrap always fails there with `Creating new namespace failed: Operation not permitted`. DSH itself runs as uid 1000 (`docker top <container> -o user,args`), where bwrap works. DSH's own readiness probe is exactly `bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true` (read-only policy) — exit 0 means DSH will pick bwrap with full enforcement.
+* **Run the test as `PUID`, never as root.** `docker exec` defaults to root, and root inside the container has no `CAP_SYS_ADMIN`, so bwrap always fails there with `Creating new namespace failed: Operation not permitted`. DSH itself runs as `PUID` (`docker top <container> -o user,args`), where bwrap works. DSH's own readiness probe is exactly `bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true` (read-only policy) — exit 0 means DSH will pick bwrap with full enforcement.
 * **`systempaths=unconfined` is invisible in `docker inspect`.** It does not appear in `HostConfig.SecurityOpt` (only `seccomp=unconfined` does); its effect is that `MaskedPaths` and `ReadonlyPaths` are empty arrays. If they are `null`, the flag really is missing.
 
 Neither `--cap-add SYS_ADMIN` nor `--privileged` is needed — they only make bwrap work *as root*, which DSH never does, and both weaken the container.

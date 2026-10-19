@@ -72,6 +72,8 @@ DeepSeek account.
 | `DSH_PASSWORD` | unset | Password for the built-in gate (or `DSH_PASSWORD_FILE`). Unset = generated on first start, printed once. |
 | `AUTH_USER` | `dsh` | User name for the built-in gate. |
 | `REMOTE_SIGNIN` | `on` | DeepSeek **account** sign-in from a remote browser: loads [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin), which puts the paste panel into the page. `off` = upstream's loopback-only behaviour. |
+| `PUID` · `PGID` | `1000` · `1000` | The uid:gid everything runs as, and the ownership the writable paths are handed to at start. Match whatever already owns your `/data`; **on Unraid that is `99` · `100`** (see [On Unraid](#on-unraid)). |
+| `UMASK` | `022` | File mode mask for the processes the container starts; `002` for a group-writable workspace. |
 | `TZ` | `Asia/Shanghai` in `compose.yaml` | Container time zone. |
 
 Already running SSO (Authelia, Authentik, a NAS portal, …)? `AUTH_MODE=none` plus
@@ -86,13 +88,18 @@ environment:
   TRUSTED_PROXY_CIDRS: 172.30.0.0/24    # optional: judge the real client IP from X-Forwarded-For
 ```
 
-Volumes are taken over as `1000:1000`. Leave that alone — it is not a NAS's usual `99:100`.
+`/data`, `/workspace`, `/home/node` and Caddy's state are handed to `PUID:PGID` at every
+start — ownership only, never contents or modes, and only where DSH writes. Tell it which
+pair that is with `PUID`/`PGID`; the default `1000:1000` is this image's own account, and
+the wrong pair is what makes a NAS deployment fail with `EACCES` on its own profile.
 
 ## Your own CLI tools and plugins
 
-Install under `/data` as **uid 1000**, restart the container, and they survive `docker pull`
-and a recreate — the entrypoint then puts them on the DSH process's `PATH`. A global
-`npm i -g` as root does none of that. Both recipes: [docs/extending.md](docs/extending.md).
+Install under `/data` as **PUID** (`1000` by default, `99` on Unraid), restart the
+container, and they survive `docker pull` and a recreate — the entrypoint then puts them on
+the DSH process's `PATH`. A global `npm i -g` as root does none of that, and neither does
+an install run through a `docker exec` that forgot `-u`. Both recipes:
+[docs/extending.md](docs/extending.md).
 
 ## Update
 
@@ -116,7 +123,9 @@ An hourly job checks upstream, rebuilds and smoke-tests the image, and publishes
 | Symptom | Fix |
 |---|---|
 | “dsh web authentication required; reopen the URL printed by dsh web” | **Just reload the page.** The browser is holding a session cookie this DSH no longer accepts (it happens after an image update, a container recreation, or another DSH on the same host — cookies ignore ports). The container notices and renews the session by itself; opening `http://<host>:<port>/renew` manually, or clearing that site's cookies, does the same thing. |
-| A tool reports `SANDBOX_UNAVAILABLE` | The two `--security-opt` values are missing from your run command (they live in `Extra Parameters` on Unraid). Put them back. When you check, two things mislead people: `systempaths=unconfined` never appears in `docker inspect`'s `SecurityOpt` (it shows up as empty `MaskedPaths`/`ReadonlyPaths` instead), and bwrap only works as **uid 1000** — which is exactly what DSH runs as. Test the way DSH does: `docker exec -u 1000 <container> bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true` → exit 0. Run as root it always fails with *Creating new namespace failed*, which says nothing about the container. `--cap-add SYS_ADMIN` and `--privileged` are not needed, and both weaken the container. |
+| A tool reports `SANDBOX_UNAVAILABLE` | The two `--security-opt` values are missing from your run command (they live in `Extra Parameters` on Unraid). Put them back. When you check, two things mislead people: `systempaths=unconfined` never appears in `docker inspect`'s `SecurityOpt` (it shows up as empty `MaskedPaths`/`ReadonlyPaths` instead), and bwrap only works as the **unprivileged identity DSH runs as** — `PUID:PGID`, `1000:1000` unless you changed it. Test the way DSH does: `docker exec -u <PUID>:<PGID> <container> bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent -- true` → exit 0. Run as root (`docker exec`'s default) it always fails with *Creating new namespace failed*, which says nothing about the container. `--cap-add SYS_ADMIN` and `--privileged` are not needed, and both weaken the container. |
+| `EACCES` / `Permission denied` on `/data/...` after an install you did by hand | The install ran as root: `docker exec` defaults to the container's root, even for `dsh plugin`. The start after it hands the volume back to `PUID:PGID` and says so in `docker logs`; redo the install with `docker exec -u <PUID>:<PGID> …` so it does not come back. |
+| Files in `appdata` keep changing owner, or a second container "steals" the volume | One volume, one container: two containers with different `PUID`/`PGID` on the same `/data` rewrite each other's ownership at every start. Give each its own volume, or give them the same pair. |
 | The browser gets `403` | Your address is not in `ALLOWED_CLIENTS`; a plain `docker run` allows loopback only. |
 | “登录失败 / 操作未完成” when signing in with a DeepSeek account | Upstream only accepts a **loopback** browser origin, so the login tab is redirected to `127.0.0.1` and dies there. **That is the step the plugin finishes:** a panel has appeared in the DSH page by then — copy the dead page's address into it. Do it within ~10 minutes and in the same container (an update or a container recreation discards the attempt). If the panel does not appear, the plugin is not loaded: set `REMOTE_SIGNIN=on` (it is the default) and check `docker logs <container> \| grep remote-signin`. Prefer no paste? Tunnel once and use a loopback origin: `ssh -L 3081:127.0.0.1:<published port> user@<server>`, then open `http://127.0.0.1:3081`. |
 | Updated, but nothing changed | Recreate the container — a running container keeps the image it started with. |
@@ -126,7 +135,11 @@ An hourly job checks upstream, rebuilds and smoke-tests the image, and publishes
 
 Unraid needs no special build: install the Community Applications entry **DSH** and keep
 its `Extra Parameters` as shipped — the two `--security-opt` values are what the sandbox
-needs on an Unraid kernel. Unraid-specific notes (the template's fields, migrating from
+needs on an Unraid kernel. **Set the template's `PUID`/`PGID` to `99`/`100`**: Unraid's
+`appdata` belongs to `nobody:users`, and that pair is what makes the container's files and
+yours the same files. With it, `Tools → New Permissions` and the Fix Common Problems tools
+stay safe to use on this appdata — they rewrite ownership to `99:100`, which the container
+then simply agrees with. Unraid-specific notes (the template's fields, migrating from
 another DSH image) and the
 [forum support thread](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)
 are at **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**.

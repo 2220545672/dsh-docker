@@ -30,11 +30,27 @@
 # Anything else fails closed.
 set -Eeuo pipefail
 
-# The image's unprivileged `node` account. Fixed on purpose: the layered
-# filesystem, /data and /workspace ownership all assume it, so making it
-# configurable at runtime would only produce permission errors.
-APP_UID=1000
-APP_GID=1000
+# The identity everything runs as. PUID/PGID choose it, and both default to the image's
+# own unprivileged `node` account (1000:1000), so a deployment that says nothing behaves
+# exactly as before. The point of the pair is a NAS: there the directory behind /data
+# already belongs to somebody — Unraid's appdata is `nobody` (99) in group `users` (100)
+# — and a process running as a third identity can neither read what is there nor write
+# what it creates. PUID=99, PGID=100 is what the Unraid template recommends; compose and
+# plain `docker run` keep 1000:1000. The variables use the spelling every NAS image uses,
+# so it is the one an operator recognizes; two consequences the rest of this file
+# carries: the writable volumes are taken over as PUID:PGID at start (nothing else can
+# make them usable), and the passwd entry is synthesized, because both `setpriv` and a
+# `~` resolve through it while the image only ships `node` at 1000.
+PUID="${PUID:-1000}"
+PGID="${PGID:-1000}"
+# Optional. 022 is the default and what other images ship; 002 is what a shared
+# group-writable workspace needs. Applied to the processes we spawn, not to the
+# entrypoint's own writes (those set their modes explicitly).
+UMASK="${UMASK:-022}"
+# A handover that has to rewrite a whole node_modules tree can take a while on a NAS
+# filesystem; the entrypoint may not hang on it, so it is bounded and a bounded-out
+# handover is reported instead of silently half-done.
+REPAIR_TIMEOUT_S=180
 
 PORT="${PORT:-8080}"
 DSH_INTERNAL_PORT="${DSH_INTERNAL_PORT:-3080}"
@@ -121,6 +137,41 @@ read_image_version() {
     done < "${DSH_VERSION_FILE}"
 }
 
+# PUID/PGID have to be usable before anything else happens: they decide which identity
+# owns the volumes, and a wrong value (a typo, or 0) has to be refused here rather than
+# half-applied. Refused: not a positive integer, a uid or gid the image's own system
+# accounts already hold (root 0, nobody 65534, the daemons between 1 and 999), and a
+# value outside uid_t's range. `node` itself is allowed: 1000 is the default, and a NAS
+# that says 1000 means it.
+resolve_identity() {
+    [[ "${PUID}" =~ ^[0-9]{1,10}$ ]] || fatal "PUID must be a positive integer (got '${PUID}')"
+    [[ "${PGID}" =~ ^[0-9]{1,10}$ ]] || fatal "PGID must be a positive integer (got '${PGID}')"
+    APP_UID=$((10#${PUID}))
+    APP_GID=$((10#${PGID}))
+    (( APP_UID > 0 )) || fatal "PUID must not be 0: the container's own root is not an identity to run the agent as"
+    (( APP_GID > 0 )) || fatal "PGID must not be 0: group 0 is root's group"
+    (( APP_UID < 4294967295 )) || fatal "PUID is outside the range of uid_t (got '${PUID}')"
+    (( APP_GID < 4294967295 )) || fatal "PGID is outside the range of gid_t (got '${PGID}')"
+
+    local line id name clash=""
+    while IFS=: read -r name _ id _; do
+        [[ "${id}" == "${APP_UID}" ]] || continue
+        [[ "${name}" == "node" ]] && continue
+        clash="uid ${APP_UID} is the image's own '${name}' account"
+    done < /etc/passwd
+    while IFS=: read -r name _ id _; do
+        [[ "${id}" == "${APP_GID}" ]] || continue
+        [[ "${name}" == "node" ]] && continue
+        clash="${clash:+${clash}; }gid ${APP_GID} is the image's own '${name}' group"
+    done < /etc/group
+    [[ -z "${clash}" ]] || fatal "PUID/PGID collide with the image's system accounts: ${clash}. Use the uid:gid that owns your data directory — Unraid's appdata is usually 99:100."
+}
+
+validate_umask() {
+    [[ "${UMASK}" =~ ^[0-7]{3,4}$ ]] || fatal "UMASK must be an octal file mode (e.g. 022 or 002), got '${UMASK}'"
+    umask "${UMASK}"
+}
+
 prepare_directory() {
     local path="$1" current="" part
     local -a parts=()
@@ -135,9 +186,70 @@ prepare_directory() {
     install -d -m 0750 -o "${APP_UID}" -g "${APP_GID}" "${path}"
 }
 
+# ------------------------------------------------------------------- ownership
+#
+# The volume handover: `$DSH_HOME`, `/home/node` and `/data/caddy` are taken over as
+# PUID:PGID before anything drops privileges, because DSH runs as PUID:PGID and those are
+# the paths it writes. It is the handover every NAS image does in its init step — PUID's
+# only meaning — and it is idempotent by construction: a probe decides, and a path already
+# owned by the pair costs one `find` and one `chown -R`. Modes and contents are never
+# touched (0600 credentials, an operator's executables), and neither is anything outside
+# these paths: `${volume}/plugin-backup` is a whole-node_modules backup no running process
+# reads, and the workspace is passed a depth of 1 so its projects keep whatever ownership
+# they have — they may belong to other services. The probe walks as deep as the handover
+# rewrites: a root-owned `0600` file three levels down is exactly what broke a profile,
+# and a probe that stopped short of it would miss it and hand over on every single start.
+# The reasoning, and what changing PUID later implies, is in docs/extending.md.
+prepare_ownership() {
+    local volume="$1" label="$2" depth="${3:-}" offending report line
+    local -a limits=()
+    [[ -n "${depth}" ]] && limits=(-maxdepth "${depth}")
+
+    offending="$(find "${volume}" -xdev "${limits[@]}" \
+        \( -path "${volume}/plugin-backup" -o -path "${volume}/plugin-backup/*" \) -prune -o \
+        \( ! -user "${APP_UID}" -o ! -group "${APP_GID}" \) -print -quit 2>/dev/null)" || true
+    [[ -n "${offending}" ]] || return 0
+
+    report="$(find "${volume}" -xdev "${limits[@]}" \
+        \( -path "${volume}/plugin-backup" -o -path "${volume}/plugin-backup/*" \) -prune -o \
+        \( ! -user "${APP_UID}" -o ! -group "${APP_GID}" \) -printf '%u:%g %m %p\n' 2>/dev/null | head -n 20)" || true
+    while IFS= read -r line; do
+        [[ -n "${line}" ]] && warn "${label}: ${line}"
+    done <<< "${report}"
+
+    if ! timeout "${REPAIR_TIMEOUT_S}" find "${volume}" -xdev "${limits[@]}" \
+        \( -path "${volume}/plugin-backup" -o -path "${volume}/plugin-backup/*" \) -prune -o \
+        -exec chown "${APP_UID}:${APP_GID}" -- {} + 2>/dev/null; then
+        warn "${volume}: the ownership handover did not finish within ${REPAIR_TIMEOUT_S}s; some files may still be unusable by uid ${APP_UID} (it resumes at the next start)"
+    else
+        log "ownership of ${volume} is now ${APP_UID}:${APP_GID} (was not; PUID/PGID changed, or something wrote there as another identity)"
+    fi
+}
+
 as_app_user() {
-    # util-linux is always present in the base image; no gosu needed.
-    setpriv --reuid "${APP_UID}" --regid "${APP_GID}" --init-groups -- "$@"
+    # util-linux is always present in the base image; no gosu needed. Supplementary groups
+    # are cleared rather than initialized: the identity is a uid:gid pair, not an account,
+    # so there is nothing to look up — and `--init-groups` aborts for every PUID the image
+    # does not ship, which is the whole point of the pair.
+    setpriv --reuid "${APP_UID}" --regid "${APP_GID}" --clear-groups -- "$@"
+}
+
+# `setpriv` takes plain numbers, but the account *names* are what everything else
+# resolves: a `~`, `whoami`, git's and ssh's idea of the home directory, and the shells an
+# agent runs all go through the passwd database. Without an entry for PUID they land on
+# `/`, which is root's, so the failure reads as a mysterious EACCES on `~/.ssh` rather
+# than as a missing account. Synthesize one, keeping HOME's own path — the single home
+# this image maintains however the uid is chosen, since moving it per identity would
+# strand `~/.ssh` and the npm cache on every PUID change.
+sync_app_account() {
+    local entry
+    entry="$(getent passwd "${APP_UID}" 2>/dev/null || true)"
+    [[ -z "${entry}" ]] || return 0
+    if ! printf 'dsh:x:%s:%s:DeepSeek Harness:%s:/bin/bash\n' "${APP_UID}" "${APP_GID}" "${HOME}" >> /etc/passwd 2>/dev/null; then
+        warn "could not add a passwd entry for uid ${APP_UID} (/etc is not writable); commands that resolve a home from the account database fall back to HOME=${HOME}"
+        return 0
+    fi
+    log "added a passwd entry for uid ${APP_UID} (home ${HOME})"
 }
 
 shutdown_children() {
@@ -229,6 +341,11 @@ if [[ -n "${TRUSTED_PROXY_CIDRS}" ]]; then
 fi
 
 # ---------------------------------------------------------------- validation
+
+# The identity first: it decides the ownership of everything below, so an unusable
+# PUID/PGID stops the container before it takes anything over.
+resolve_identity
+validate_umask
 
 case "${AUTH_MODE}" in
     builtin|none) ;;
@@ -357,7 +474,7 @@ if [[ "${AUTH_MODE}" == "builtin" ]]; then
     password=""
     password_source=""
     if [[ -n "${DSH_PASSWORD_FILE}" ]]; then
-        [[ -r "${DSH_PASSWORD_FILE}" ]] || fatal "DSH_PASSWORD_FILE is not readable: ${DSH_PASSWORD_FILE}"
+        [[ -r "${DSH_PASSWORD_FILE}" ]] || fatal "DSH_PASSWORD_FILE is not readable: ${DSH_PASSWORD_FILE} (a mounted secret is often root-only, and this container reads it as uid ${APP_UID} — make it readable to PUID, or use DSH_PASSWORD instead)"
         # $(<file) already drops trailing newlines
         password="$(<"${DSH_PASSWORD_FILE}")"
         password_source="DSH_PASSWORD_FILE"
@@ -450,6 +567,18 @@ if ! awk '$5 == "/data" { found = 1 } END { exit found ? 0 : 1 }' /proc/self/mou
     warn "/data is not a mount point: sessions, credentials and the agent home will be lost when this container is recreated"
 fi
 
+# The identity made real: an account to resolve, and the writable paths taken over.
+# Both are no-ops once they have happened — an entry already in passwd, a path already
+# owned by PUID:PGID — so a restart costs a `getent` and a `find` per path.
+sync_app_account
+prepare_ownership "${DSH_HOME}" "${DSH_HOME}"
+prepare_ownership /home/node "/home/node"
+# Caddy's own state: the rendered Caddyfile, the gate's salt and its data directory. The
+# entrypoint creates them, so they are root's until this runs — and everything after it
+# runs as PUID.
+prepare_ownership "${CADDY_CONFIG_HOME%/config}" "${CADDY_CONFIG_HOME%/config}"
+prepare_ownership "${DSH_WORKSPACE}" "${DSH_WORKSPACE} (top level only)" 1
+
 DSH_VERSION="$(read_image_version || true)"
 
 if [[ -n "${PUBLIC_URL}" ]]; then
@@ -530,8 +659,9 @@ else
     log "remote sign-in: off — account sign-in needs a browser on this machine (or an ssh -L tunnel); an API key works from anywhere"
 fi
 (
+    umask "${UMASK}"
     cd "${DSH_WORKSPACE}"
-    exec setpriv --reuid "${APP_UID}" --regid "${APP_GID}" --init-groups -- dsh "${DSH_ARGS[@]}"
+    exec setpriv --reuid "${APP_UID}" --regid "${APP_GID}" --clear-groups -- dsh "${DSH_ARGS[@]}"
 ) > >(tee "${DSH_STARTUP_LOG}") 2>&1 &
 DSH_PID=$!
 

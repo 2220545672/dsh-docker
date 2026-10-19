@@ -44,8 +44,8 @@ FAILURES=0
 
 cleanup() {
     docker rm -f "${NAME}" >/dev/null 2>&1 || true
-    # The container chowns the bind mounts to uid 1000, which the runner user is
-    # not, so the plain rm can fail; try sudo before giving up.
+    # The container hands the bind mounts to PUID:PGID (1000:1000 by default), which the
+    # runner user is not, so the plain rm can fail; try sudo before giving up.
     rm -rf "${WORKDIR}" 2>/dev/null || sudo rm -rf "${WORKDIR}" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -515,6 +515,91 @@ if docker exec --user 1000:1000 "${NAME}" sh -c '/data/dsh/bin/smoke-flat >/dev/
 else
     fail 'tools in the persistent volume are not executable by the account DSH runs as'
 fi
+
+# 5d — PUID/PGID. The identity is a setting now, and what has to survive it is ownership:
+# on a NAS the directory behind /data already belongs to somebody else, and a process
+# running as a third identity can neither read what is there nor write what it creates.
+# Three claims, all of them quietly false before: a container runs as the configured pair
+# and reads the profile a *root* install left behind (a mode-0600 `package.json` three
+# directories deep — the depth the handover has to reach), a second start does not hand
+# the volume over again, and an unusable pair stops the container instead of half-applying
+# it. `~` is asserted too: `setpriv` drops to a bare uid:gid pair, so nothing but the
+# passwd entry the entrypoint synthesizes makes the home resolve.
+IDENT_NAME="${NAME}-puid"
+IDENT_PORT=$((PORT + 6))
+IDENT_DATA="${WORKDIR}/data-puid"
+IDENT_UID=99
+IDENT_GID=100
+IDENT_ID="${IDENT_UID}:${IDENT_GID}"
+mkdir -p "${IDENT_DATA}/dsh/profiles/web" "${WORKDIR}/workspace-puid"
+printf '{"name":"dsh-profile-web","private":true}\n' > "${IDENT_DATA}/dsh/profiles/web/package.json"
+chmod 0600 "${IDENT_DATA}/dsh/profiles/web/package.json"
+# Root's, as an install run through `docker exec` (which defaults to the container's
+# root) leaves it: the volume is mounted into a throwaway root container to chown it.
+docker run --rm --volume "${IDENT_DATA}:/data" --user 0:0 --entrypoint chown "${IMAGE}" -R 0:0 /data \
+    >/dev/null 2>&1 || fail 'could not seed the root-owned volume (the PUID assertions below are not meaningful without it)'
+docker run --detach --name "${IDENT_NAME}" \
+    --env 'ALLOWED_CLIENTS=127.0.0.1,172.16.0.0/12' \
+    --env "PUID=${IDENT_UID}" \
+    --env "PGID=${IDENT_GID}" \
+    --env 'DSH_PASSWORD=smoke-test-password' \
+    --publish "127.0.0.1:${IDENT_PORT}:8080" \
+    --volume "${IDENT_DATA}:/data" \
+    --volume "${WORKDIR}/workspace-puid:/workspace" \
+    "${IMAGE}" >/dev/null
+for _ in $(seq 1 30); do
+    if curl --silent --fail --max-time 3 "http://127.0.0.1:${IDENT_PORT}/healthz" >/dev/null 2>&1; then break; fi
+    sleep 2
+done
+if [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "${SMOKE_AUTH[@]}" "http://127.0.0.1:${IDENT_PORT}/")" == '303' ]]; then
+    pass "a container configured with PUID/PGID=${IDENT_ID} serves the app"
+else
+    fail "PUID/PGID=${IDENT_ID} did not produce a working container"
+fi
+if docker exec --user "${IDENT_ID}" "${IDENT_NAME}" sh -c 'cat /data/dsh/profiles/web/package.json >/dev/null' 2>/dev/null; then
+    pass 'the root-owned 0600 profile is readable as PUID (the handover reached it)'
+else
+    fail 'a root-owned 0600 profile stayed unreadable after the handover; DSH would fail with EACCES on its own profile'
+fi
+IDENT_OWNER="$(stat --format='%u:%g' "${IDENT_DATA}/dsh/profiles/web/package.json" 2>/dev/null || printf '?')"
+if [[ "${IDENT_OWNER}" == "${IDENT_ID}" ]]; then
+    pass "the profile now belongs to ${IDENT_ID}"
+else
+    fail "the profile still belongs to ${IDENT_OWNER:-?}, expected ${IDENT_ID}"
+fi
+if docker exec --user "${IDENT_ID}" "${IDENT_NAME}" sh -c 'test "$(id -un)" = dsh && test "$(getent passwd "$(id -u)" | cut -d: -f6)" = "$HOME"' 2>/dev/null; then
+    pass 'the configured uid resolves an account and a home (~ is not /)'
+else
+    fail 'the configured uid has no passwd entry; ~/.ssh and the npm cache would land on /'
+fi
+IDENT_UID_SEEN="$(docker exec --user "${IDENT_ID}" "${IDENT_NAME}" id -u 2>/dev/null || printf '?')"
+if [[ "${IDENT_UID_SEEN}" == "${IDENT_UID}" ]]; then
+    pass "the app really runs as uid ${IDENT_UID_SEEN}"
+else
+    fail "the app ran as uid ${IDENT_UID_SEEN:-?}, expected ${IDENT_UID}"
+fi
+
+HANDOVERS_BEFORE="$(docker logs "${IDENT_NAME}" 2>&1 | grep --count 'ownership of /data/dsh' || true)"
+docker restart "${IDENT_NAME}" >/dev/null
+for _ in $(seq 1 30); do
+    if curl --silent --fail --max-time 3 "http://127.0.0.1:${IDENT_PORT}/healthz" >/dev/null 2>&1; then break; fi
+    sleep 2
+done
+HANDOVERS_AFTER="$(docker logs "${IDENT_NAME}" 2>&1 | grep --count 'ownership of /data/dsh' || true)"
+if [[ "${HANDOVERS_BEFORE}" == '1' && "${HANDOVERS_AFTER}" == '1' ]]; then
+    pass 'the volume handover happens once, not on every start'
+else
+    fail "the handover ran ${HANDOVERS_BEFORE} time(s), then ${HANDOVERS_AFTER}; it has to be idempotent"
+fi
+docker rm -f "${IDENT_NAME}" >/dev/null 2>&1 || true
+
+for bad in 'PUID=0' 'PGID=0' 'PUID=abc'; do
+    if docker run --rm --env "${bad}" --env 'DSH_PASSWORD=smoke-test-password' "${IMAGE}" >/dev/null 2>&1; then
+        fail "${bad} was accepted; an unusable identity has to stop the container"
+    else
+        pass "${bad} stops the container"
+    fi
+done
 
 # 6 — both Caddy configs must validate
 for config in edge lan; do

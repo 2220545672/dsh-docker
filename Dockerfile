@@ -175,14 +175,26 @@ RUN set -eux; \
     ln -sfn /workspace /home/node/workspace; \
     chown -h 1000:1000 /home/node/workspace
 
-# HOME must point at the account the container drops to: the base image leaves it
+# The ownership above is the build-time default identity (1000:1000), and it no longer
+# has to be the runtime one: PUID/PGID choose who the container runs as, and the
+# entrypoint hands the writable volumes over to that pair before it drops privileges.
+# The build-time chown stays because it is what a volume-less container (and the CI
+# smoke test) sees before the handover runs.
+#
+# HOME must point at the home the container maintains: the base image leaves it
 # at /root, which uid 1000 cannot write, so `~/.ssh/config`, git config and tool
 # caches all failed until this was set. The previous community image had it right;
-# this one shipped without it once.
+# this one shipped without it once. It stays one path for every PUID — the entrypoint
+# synthesizes the passwd entry for the chosen uid with this home — because moving the
+# home per identity would strand `~/.ssh` and the npm cache on every PUID change.
 # AUTH_MODE=builtin puts the container's own password gate in front of the UI;
 # DSH_PASSWORD / DSH_PASSWORD_FILE choose the password (or one is generated and
 # printed once). Set AUTH_MODE=none when an authenticating proxy or a trusted
 # network is in front — the entrypoint fails closed on any other value.
+# PUID/PGID are deliberately *not* set here: an image-level ENV would make them look
+# like configuration the image has an opinion about, while their whole point is to
+# match the uid:gid that already owns the operator's /data. The entrypoint defaults
+# them to 1000:1000.
 ENV NODE_ENV=production \
     HOME=/home/node \
     PORT=8080 \
