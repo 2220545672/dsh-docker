@@ -145,4 +145,4 @@ ssh -N -L 3081:127.0.0.1:3080 root@<服务器>     # 后面这个端口是你把
 | `/usr/local/bin/entrypoint.sh` | 本仓库 | 决定是否加载插件、校验 `REMOTE_SIGNIN_ORIGIN`、在日志里给独立页面地址。 |
 | `/etc/caddy/Caddyfile.{edge,lan}` | 本仓库 | 不为插件单独开路由：`/remote-signin/inpage.js` 与其它路径一样走反代，并同样处于门禁之后。 |
 
-镜像钉住插件仓库的 **tag**（`REMOTE_SIGNIN_VERSION`，当前 `v0.1.1`）：插件自己的 CI 验证它，镜像拿到的是构建时使用的那个版本。上游处于开发者预览阶段——若 `deepseekAccount.startSignIn` 或平台的回调契约发生变化，插件会自行停止生效（并在日志里说明），而不是让容器坏掉；届时只是不再提供粘贴这条路径，`REMOTE_SIGNIN=off` 是显式回到上游行为的方式。
+镜像钉住插件仓库的 **tag**（`REMOTE_SIGNIN_VERSION`，当前 `v0.1.1`）：插件自己的 CI 验证它，镜像拿到的是构建时使用的那个版本。若 `deepseekAccount.startSignIn` 或平台的回调契约发生变化，插件会自行停止生效（并在日志里说明），而不是让容器坏掉；届时只是不再提供粘贴这条路径，`REMOTE_SIGNIN=off` 是显式回到上游行为的方式。

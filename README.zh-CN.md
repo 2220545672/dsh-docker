@@ -8,8 +8,6 @@
 <img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
 <img src="https://img.shields.io/badge/license-MIT-green" alt="license"></p>
 
-> **开发者预览。** 上游迭代很快，破坏兼容性的变更会持续出现。本镜像自动跟随上游发布——想自己掌握节奏就钉住[版本标签](#更新)。
-
 ## 这个镜像的优势
 
 | | 自己跑上游 | `ghcr.io/2220545672/dsh` |

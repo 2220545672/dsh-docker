@@ -211,7 +211,7 @@ tested with, and the plugin's own CI is what validates it.
 
 The image pins a **tag** of the plugin repository (`REMOTE_SIGNIN_VERSION`, `v0.1.1`
 today): the plugin's CI validates it, and an image gets the version it was built with.
-Upstream is in developer preview — if `deepseekAccount.startSignIn` or the platform's
-callback contract changes, the plugin stops applying itself (and says so) rather than
-breaking the container; the paste flow then simply stops being offered, and
-`REMOTE_SIGNIN=off` is the explicit way to go back to upstream behaviour.
+If `deepseekAccount.startSignIn` or the platform's callback contract changes, the plugin
+stops applying itself (and says so) rather than breaking the container; the paste flow
+then simply stops being offered, and `REMOTE_SIGNIN=off` is the explicit way to go back
+to upstream behaviour.

@@ -8,8 +8,6 @@
 <img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
 <img src="https://img.shields.io/badge/license-MIT-green" alt="license"></p>
 
-> **Developer preview.** Upstream iterates fast and will break compatibility. This image tracks it automatically — pin a [version tag](#update) if you would rather move on your own schedule.
-
 ## Why this image
 
 | | Running upstream yourself | `ghcr.io/2220545672/dsh` |
