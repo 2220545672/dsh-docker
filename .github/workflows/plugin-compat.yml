@@ -54,6 +54,11 @@ jobs:
         with:
           node-version: '22'
 
+      # dsh plugin shells out to pnpm; setup-node does not install it.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
       - name: Resolve versions
         id: versions
         env:
