@@ -1,0 +1,117 @@
+name: plugin-compat
+
+# Cross-repository compatibility gate for dsh-context-editor.
+#
+# This repository owns the DSH version the image ships, so the compatibility
+# test lives here. It runs when:
+#   * dsh-context-editor publishes a release (repository_dispatch from that repo);
+#   * this repository changes (push to main);
+#   * once a day, as a fallback for a missing dispatch secret or a registry-only
+#     plugin release.
+# A failure opens (or comments on) an issue in this repository. The issue step
+# uses the workflow's own GITHUB_TOKEN, so no cross-repository token is needed
+# for notifications.
+
+on:
+  repository_dispatch:
+    types: [context-editor-updated]
+  workflow_dispatch:
+    inputs:
+      plugin_version:
+        description: 'dsh-context-editor version (latest or exact)'
+        required: false
+        default: 'latest'
+      dsh_version:
+        description: 'Exact @deepseek-ai/dsh version (empty = newest published)'
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'scripts/**'
+      - '.github/workflows/plugin-compat.yml'
+  schedule:
+    - cron: '41 5 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: plugin-compat
+  cancel-in-progress: true
+
+jobs:
+  compat:
+    name: dsh-context-editor against DSH
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve versions
+        id: versions
+        env:
+          EVENT_PLUGIN_VERSION: ${{ github.event.client_payload.plugin_version }}
+          INPUT_PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          INPUT_DSH_VERSION: ${{ inputs.dsh_version }}
+        run: |
+          set -euo pipefail
+          dsh_version="${INPUT_DSH_VERSION:-}"
+          if [[ -z "${dsh_version}" ]]; then
+            dsh_version="$(node scripts/resolve-dsh-version.mjs | awk -F= '$1 == "version" { print $2 }')"
+          fi
+          plugin_version="${EVENT_PLUGIN_VERSION:-${INPUT_PLUGIN_VERSION:-latest}}"
+          if [[ "${plugin_version}" == "latest" ]]; then
+            plugin_version="$(npm view dsh-context-editor version)"
+          fi
+          [[ "${dsh_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "invalid dsh version: ${dsh_version}" >&2; exit 2; }
+          [[ "${plugin_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "invalid plugin version: ${plugin_version}" >&2; exit 2; }
+          echo "dsh_version=${dsh_version}" >> "${GITHUB_OUTPUT}"
+          echo "plugin_version=${plugin_version}" >> "${GITHUB_OUTPUT}"
+          {
+            echo '### Compatibility target'
+            echo ''
+            echo "- DSH: \`${dsh_version}\`"
+            echo "- dsh-context-editor: \`${plugin_version}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Compatibility smoke
+        run: bash scripts/plugin-compat.sh "${{ steps.versions.outputs.dsh_version }}" "${{ steps.versions.outputs.plugin_version }}"
+
+      - name: Open or update the failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DSH_VERSION: ${{ steps.versions.outputs.dsh_version }}
+          PLUGIN_VERSION: ${{ steps.versions.outputs.plugin_version }}
+        run: |
+          set -euo pipefail
+          title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} on DSH ${DSH_VERSION}"
+          body="$(mktemp)"
+          cat > "${body}" <<BODY
+          The cross-repository compatibility test failed.
+
+          - plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`
+          - DSH: \`${DSH_VERSION}\`
+          - trigger: \`${{ github.event_name }}\`
+          - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Reproduce locally:
+
+          \`\`\`bash
+          bash scripts/plugin-compat.sh "${DSH_VERSION}" "${PLUGIN_VERSION}"
+          \`\`\`
+          BODY
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' --json number,title \
+            | jq -r --arg title "${title}" '.[] | select(.title == $title) | .number' | head -n1)"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file "${body}"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file "${body}"
+          fi
