@@ -62,6 +62,7 @@ permissions:
   contents: write
   packages: write
   id-token: write
+  issues: write
 
 env:
   REGISTRY: ghcr.io
@@ -159,9 +160,72 @@ jobs:
       - name: Smoke test the image
         run: bash scripts/smoke.sh "dsh-verify:${{ needs.resolve.outputs.version }}"
 
+  plugin-compat:
+    name: dsh-context-editor compatibility
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # dsh plugin shells out to pnpm; setup-node does not install it.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Resolve the stable plugin version
+        id: plugin
+        run: |
+          set -euo pipefail
+          version="$(npm view dsh-context-editor version)"
+          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "invalid plugin version: ${version}" >&2; exit 2; }
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      # The image update is what changed; the plugin is expected to stay stable.
+      # Gate the publish on the current stable plugin working with this DSH
+      # version, and file an issue instead of shipping a broken image silently.
+      - name: Test the current stable plugin against this DSH version
+        run: bash scripts/plugin-compat.sh "${{ needs.resolve.outputs.version }}" "${{ steps.plugin.outputs.version }}"
+
+      - name: Open or update the failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DSH_VERSION: ${{ needs.resolve.outputs.version }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
+        run: |
+          set -euo pipefail
+          title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} on DSH ${DSH_VERSION}"
+          body="$(mktemp)"
+          cat > "${body}" <<BODY
+          The image release was blocked because the stable plugin failed against
+          the new DSH version.
+
+          - plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`
+          - DSH: \`${DSH_VERSION}\`
+          - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Reproduce locally:
+
+          \`\`\`bash
+          bash scripts/plugin-compat.sh "${DSH_VERSION}" "${PLUGIN_VERSION}"
+          \`\`\`
+          BODY
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' --json number,title \
+            | jq -r --arg title "${title}" '.[] | select(.title == $title) | .number' | head -n1)"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file "${body}"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file "${body}"
+          fi
+
   publish:
     name: publish multi-arch image
-    needs: [resolve, verify]
+    needs: [resolve, verify, plugin-compat]
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.push.outputs.digest }}

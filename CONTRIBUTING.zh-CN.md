@@ -66,7 +66,8 @@ node scripts/resolve-dsh-version.mjs --version=0.2.1-alpha.4
 | 工作流 | 触发 | 做什么 |
 |---|---|---|
 | `validate` | 每次 push / PR | 静态闸门 + shellcheck + hadolint + `caddy validate` + 脚本端到端 |
-| `release` | 每小时 :17、触及镜像的 push、手动 | 解析版本 → **静态闸门** → 构建 amd64 → 冒烟 → 推送 amd64+arm64（`:<版本>`、`:latest`、`:<通道>`）→ 建 `dsh-v<版本>` tag 与 Release |
+| `release` | 每小时 :17、触及镜像的 push、手动 | 解析版本 → **静态闸门** → 构建 amd64 → 冒烟 → **稳定版 `dsh-context-editor` 兼容测试** → 推送 amd64+arm64（`:<版本>`、`:latest`、`:<通道>`）→ 建 `dsh-v<版本>` tag 与 Release |
+| `plugin-compat` | 每日 + 手动 | 安装最新已发布 DSH 与当前稳定版 `dsh-context-editor`，启动 web，确认插件进入客户端 bundle 图；失败自动建 issue |
 
 Release tag 一律写成 `dsh-v<版本>`，与上游自己的命名一致（`deepseek-ai/deepseek-harness`
 的 Release 就是 `dsh-v0.2.1-alpha.5`），这样一个版本在两个仓库里拼写相同、可以直接互相粘贴。

@@ -1,20 +1,19 @@
 name: plugin-compat
 
-# Cross-repository compatibility gate for dsh-context-editor.
+# Re-check the stable dsh-context-editor plugin against the newest published
+# DSH version.
 #
-# This repository owns the DSH version the image ships, so the compatibility
-# test lives here. It runs when:
-#   * dsh-context-editor publishes a release (repository_dispatch from that repo);
-#   * this repository changes (push to main);
-#   * once a day, as a fallback for a missing dispatch secret or a registry-only
-#     plugin release.
+# The release gate lives in release.yml: it runs the same smoke before an image
+# is published, so a DSH update cannot ship with a broken plugin. This workflow
+# is the manual/daily re-check for an already published image (and for a
+# registry-only plugin change); it is intentionally not triggered by plugin
+# releases.
+#
 # A failure opens (or comments on) an issue in this repository. The issue step
 # uses the workflow's own GITHUB_TOKEN, so no cross-repository token is needed
 # for notifications.
 
 on:
-  repository_dispatch:
-    types: [context-editor-updated]
   workflow_dispatch:
     inputs:
       plugin_version:
@@ -25,13 +24,6 @@ on:
         description: 'Exact @deepseek-ai/dsh version (empty = newest published)'
         required: false
         default: ''
-  push:
-    branches: [main]
-    paths:
-      - 'Dockerfile'
-      - 'docker/**'
-      - 'scripts/**'
-      - '.github/workflows/plugin-compat.yml'
   schedule:
     - cron: '41 5 * * *'
 
@@ -62,7 +54,6 @@ jobs:
       - name: Resolve versions
         id: versions
         env:
-          EVENT_PLUGIN_VERSION: ${{ github.event.client_payload.plugin_version }}
           INPUT_PLUGIN_VERSION: ${{ inputs.plugin_version }}
           INPUT_DSH_VERSION: ${{ inputs.dsh_version }}
         run: |
@@ -71,7 +62,7 @@ jobs:
           if [[ -z "${dsh_version}" ]]; then
             dsh_version="$(node scripts/resolve-dsh-version.mjs | awk -F= '$1 == "version" { print $2 }')"
           fi
-          plugin_version="${EVENT_PLUGIN_VERSION:-${INPUT_PLUGIN_VERSION:-latest}}"
+          plugin_version="${INPUT_PLUGIN_VERSION:-latest}"
           if [[ "${plugin_version}" == "latest" ]]; then
             plugin_version="$(npm view dsh-context-editor version)"
           fi

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# Cross-repository compatibility smoke for the dsh-context-editor plugin.
+# Compatibility smoke for the stable dsh-context-editor plugin.
 #
 #   scripts/plugin-compat.sh <dsh-version> <plugin-version>
 #
 # Installs the exact DSH version and the published plugin into a throwaway
 # DSH_HOME, boots the web server, and asserts that the plugin is present in the
-# live client bundle graph. This runs on the CI runner (Node/npm only), not in
-# the image, so it can gate a plugin release before the image is rebuilt.
+# live client bundle graph. The release workflow runs this before publishing a
+# new DSH image: the image update is the trigger, the plugin is expected to
+# remain stable. This runs on the CI runner (Node/npm only), not in the image.
 set -Eeuo pipefail
 
 DSH_VERSION="${1:?usage: plugin-compat.sh <dsh-version> <plugin-version>}"
