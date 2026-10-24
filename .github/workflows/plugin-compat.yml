@@ -8,8 +8,10 @@ name: plugin-compat
 # not triggered by plugin releases: the plugin is expected to stay stable while
 # dsh-docker follows upstream DSH.
 #
-# A failure opens (or comments on) an issue in this repository. The issue step
-# uses the workflow's own GITHUB_TOKEN, so no cross-repository token is needed.
+# A failure is reported to 2220545672/dsh-context-editor, where the fix lands:
+# the report travels as a repository_dispatch event because a workflow's own
+# GITHUB_TOKEN is scoped to its own repository. When CROSS_REPO_TOKEN is not
+# configured, the report falls back to an issue here so a red run stays visible.
 
 on:
   workflow_dispatch:
@@ -27,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  # Only the fallback path (CROSS_REPO_TOKEN missing) writes an issue here.
   issues: write
 
 concurrency:
@@ -69,36 +72,29 @@ jobs:
       - name: Pull image
         run: docker pull "${{ steps.versions.outputs.image }}"
 
+      # Only for the failure report: the issue should name both sides, and the
+      # DSH version lives inside the image rather than in a manifest readable
+      # from here. `|| true` keeps an unreadable version from masking the real
+      # failure below.
+      - name: Read the DSH version from the image
+        id: dsh
+        run: |
+          set -euo pipefail
+          version="$(docker run --rm --entrypoint dsh "${{ steps.versions.outputs.image }}" --version 2>/dev/null || true)"
+          echo "version=${version:-unknown}" >> "${GITHUB_OUTPUT}"
+
       - name: Compatibility smoke inside the image
         run: bash scripts/plugin-compat-image.sh "${{ steps.versions.outputs.image }}" "${{ steps.versions.outputs.plugin_version }}"
 
-      - name: Open or update the failure issue
+      # The issue belongs in the plugin repository (the subject under test). This
+      # repository's token cannot write there, so the report is dispatched; the
+      # script falls back to a local issue when CROSS_REPO_TOKEN is missing.
+      - name: Report the failure to the plugin repository
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           IMAGE: ${{ steps.versions.outputs.image }}
           PLUGIN_VERSION: ${{ steps.versions.outputs.plugin_version }}
-        run: |
-          set -euo pipefail
-          title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} in ${IMAGE}"
-          body="$(mktemp)"
-          cat > "${body}" <<BODY
-          The compatibility re-check failed.
-
-          - image: \`${IMAGE}\`
-          - plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`
-          - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          Reproduce locally:
-
-          \`\`\`bash
-          bash scripts/plugin-compat-image.sh "${IMAGE}" "${PLUGIN_VERSION}"
-          \`\`\`
-          BODY
-          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' --json number,title \
-            | jq -r --arg title "${title}" '.[] | select(.title == $title) | .number' | head -n1)"
-          if [[ -n "${existing}" ]]; then
-            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file "${body}"
-          else
-            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file "${body}"
-          fi
+          DSH_VERSION: ${{ steps.dsh.outputs.version }}
+        run: bash scripts/report-plugin-failure.sh "${PLUGIN_VERSION}" "${DSH_VERSION}" "${IMAGE}"

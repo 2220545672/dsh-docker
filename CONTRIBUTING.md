@@ -70,7 +70,7 @@ version and takes the highest by semver; prereleases participate per the spec.
 |---|---|---|
 | `validate` | Every push and PR | Static gates + shellcheck + hadolint + `caddy validate` + script end-to-end |
 | `release` | Hourly cron (:17), pushes touching the image, manual | Resolve version → **static gates** → build amd64 → smoke → **stable `dsh-context-editor` compatibility inside the built image** → push amd64+arm64 (`:<version>`, `:latest`, `:<channel>`) → create the `dsh-v<version>` tag and Release |
-| `plugin-compat` | Daily + manual | Pull a published image, install the current stable `dsh-context-editor` inside it with the image pnpm, restart through the normal entrypoint, assert the plugin reaches the client bundle graph; an issue is opened on failure |
+| `plugin-compat` | Daily + manual | Pull a published image, install the current stable `dsh-context-editor` inside it with the image pnpm, restart through the normal entrypoint, assert the plugin reaches the client bundle graph; a failure is reported to `2220545672/dsh-context-editor` (repo dispatch), or to an issue here when `CROSS_REPO_TOKEN` is unset |
 
 Release tags are spelled `dsh-v<version>` to match upstream's own scheme
 (`deepseek-ai/deepseek-harness` releases as `dsh-v0.2.1-alpha.5`), so one version reads
@@ -101,6 +101,7 @@ not republish anything** — use `force`.
 | Workflow permissions = **Read and write** | Settings → Actions → General | Pushing to GHCR returns 403 (in read-only mode `packages: write` is not granted) |
 | **Manage Actions access** on the `dsh` package = this repository, role **Write** | Package settings → Manage Actions access → Add repository | `docker push` fails with `denied: permission_denied`. GitHub Actions only gets automatic access to a package from the repository the package is *linked* to; a build that runs in another repository (as this one does, after being split out of `dsh-unraid`) must be granted access explicitly |
 | GHCR package visibility = **Public** | Package settings → Change visibility | An anonymous `docker pull` returns 401 |
+| `CROSS_REPO_TOKEN` secret = a token that may dispatch events to `2220545672/dsh-context-editor` | Settings → Secrets and variables → Actions | A plugin compatibility failure is still reported, but only as a fallback issue in **this** repository instead of an issue in the plugin repository. Fine-grained: *Contents: read and write* on that one repository; classic: `repo` |
 
 Also: **a public repository with no activity for 60 consecutive days gets its scheduled
 workflows disabled automatically.** If upstream goes quiet for a long time, open the

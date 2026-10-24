@@ -67,7 +67,7 @@ node scripts/resolve-dsh-version.mjs --version=0.2.1-alpha.4
 |---|---|---|
 | `validate` | 每次 push / PR | 静态闸门 + shellcheck + hadolint + `caddy validate` + 脚本端到端 |
 | `release` | 每小时 :17、触及镜像的 push、手动 | 解析版本 → **静态闸门** → 构建 amd64 → 冒烟 → **稳定版 `dsh-context-editor` 兼容测试（在构建出的镜像内）** → 推送 amd64+arm64（`:<版本>`、`:latest`、`:<通道>`）→ 建 `dsh-v<版本>` tag 与 Release |
-| `plugin-compat` | 每日 + 手动 | 拉取已发布镜像，用镜像自带 pnpm 安装当前稳定版 `dsh-context-editor`，按正常 entrypoint 重启，确认插件进入客户端 bundle 图；失败自动建 issue |
+| `plugin-compat` | 每日 + 手动 | 拉取已发布镜像，用镜像自带 pnpm 安装当前稳定版 `dsh-context-editor`，按正常 entrypoint 重启，确认插件进入客户端 bundle 图；失败转发到 `2220545672/dsh-context-editor` 建 issue（repo dispatch），`CROSS_REPO_TOKEN` 未配置时退化为在本仓库建 issue |
 
 Release tag 一律写成 `dsh-v<版本>`，与上游自己的命名一致（`deepseek-ai/deepseek-harness`
 的 Release 就是 `dsh-v0.2.1-alpha.5`），这样一个版本在两个仓库里拼写相同、可以直接互相粘贴。
@@ -94,6 +94,7 @@ Release tag 一律写成 `dsh-v<版本>`，与上游自己的命名一致（`dee
 | Workflow permissions = **Read and write** | Settings → Actions → General | 推送 GHCR 直接 403（只读模式下 `packages: write` 不会被授予） |
 | 包 `dsh` 的 **Manage Actions access** 里加上本仓库、角色 **Write** | Package settings → Manage Actions access → Add repository | `docker push` 报 `denied: permission_denied`。GitHub Actions 只对包**链接到**的那个仓库自动获得权限；构建跑在另一个仓库时（本仓库就是从 `dsh-unraid` 拆出来的）必须显式授权 |
 | GHCR 包可见性 = **Public** | Package settings → Change visibility | 匿名 `docker pull` 返回 401 |
+| secret `CROSS_REPO_TOKEN` = 一个能向 `2220545672/dsh-context-editor` 发 repository dispatch 的 token | Settings → Secrets and variables → Actions | 插件兼容性失败仍然会上报，但只会退化成在**本仓库**建 issue，而不是建在插件仓库。fine-grained 只需对该仓库 **Contents: read and write**；classic 需要 `repo` |
 
 另：**公开仓库连续 60 天无活动，定时工作流会被自动停用。** 上游长时间不发版时，去 Actions 页点一次
 *Enable workflow*。
