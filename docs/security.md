@@ -46,7 +46,7 @@ The default value has two sources, don't confuse them:
 | Scenario | Allowed by default | Notes |
 |---|---|---|
 | `compose.yaml` | loopback + private ranges (10/8, 172.16/12, 192.168/16, 100.64/10) + link-local | works out of the box; for a hand-written `docker run`, copy these values |
-| Unraid template ([dsh-unraid](https://github.com/2220545672/dsh-unraid)) | same list | the CA template ships it; installed users have their own copy |
+| Unraid template ([dsh-unraid](https://github.com/MeiXu6693/dsh-unraid)) | same list | the CA template ships it; installed users have their own copy |
 | The image itself (variable not set) | loopback only | secure default; access over a published port gets `403` |
 
 ### Troubleshooting: the UI returns 403

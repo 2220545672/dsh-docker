@@ -9,7 +9,7 @@
 在没有启用 Landlock 的内核上（Unraid 7.x 及其它一些设备型内核）运行 DSH，必须同时满足两条：
 
 1. **镜像里要有 `bubblewrap`**（本镜像已内置；很多社区镜像没有）。
-2. **容器要以 `--security-opt seccomp=unconfined --security-opt systempaths=unconfined` 启动**（本仓库 `compose.yaml` 里已写死；Unraid 模板 [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid) 把它们放在 `Extra Parameters`）。
+2. **容器要以 `--security-opt seccomp=unconfined --security-opt systempaths=unconfined` 启动**（本仓库 `compose.yaml` 里已写死；Unraid 模板 [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid) 把它们放在 `Extra Parameters`）。
 
 缺第一条：沙箱两条腿都断，DSH 的 `bash` 工具直接 fail-closed。
 缺第二条：`bwrap` 在容器内起不来（`No permissions to create a new namespace` / `Can't mount proc on /proc`）。
@@ -66,12 +66,12 @@ refusing to run the command unconfined. Install bubblewrap or run a Landlock-enf
 grep -i landlock /proc/kallsyms | head -3        # 无输出 = 没编入
 
 # 2. 镜像里有没有 bwrap
-docker run --rm --entrypoint bwrap ghcr.io/2220545672/dsh:latest --version
+docker run --rm --entrypoint bwrap ghcr.io/meixu6693/dsh:latest --version
 
 # 3. 带两个 security-opt 时能不能真的建命名空间（应输出 SANDBOX_OK）
 docker run --rm \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
-  --entrypoint setpriv ghcr.io/2220545672/dsh:latest \
+  --entrypoint setpriv ghcr.io/meixu6693/dsh:latest \
   --reuid <PUID> --regid <PGID> --clear-groups \
   bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent \
     --tmpfs /tmp --bind /workspace /workspace -- /bin/sh -c "echo SANDBOX_OK"

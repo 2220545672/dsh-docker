@@ -3,14 +3,14 @@
 <p align="center"><a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a> — a coding agent you drive from the browser — in one self-contained image for any Docker host. One port, two volumes, one command.</p>
 
 <p align="center"><b>English</b> · <a href="README.zh-CN.md">中文说明</a><br>
-<a href="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
-<a href="https://github.com/2220545672/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/2220545672/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
+<a href="https://github.com/MeiXu6693/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/MeiXu6693/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
+<a href="https://github.com/MeiXu6693/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/MeiXu6693/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
 <img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
 <img src="https://img.shields.io/badge/license-MIT-green" alt="license"></p>
 
 ## Why this image
 
-| | Running upstream yourself | `ghcr.io/2220545672/dsh` |
+| | Running upstream yourself | `ghcr.io/meixu6693/dsh` |
 |---|---|---|
 | Start | the npm package, wired up by hand | `docker compose up -d` |
 | Command sandbox on a kernel without Landlock (Unraid 7.x, some appliance kernels) | will not start | works — bubblewrap is bundled, the two `--security-opt` values are in [`compose.yaml`](compose.yaml) |
@@ -44,7 +44,7 @@ docker run -d --name dsh --restart unless-stopped -p 8080:8080 \
   -v "$PWD/dsh/data:/data" \
   -v "$PWD/dsh/workspace:/workspace" \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
-  ghcr.io/2220545672/dsh:latest
+  ghcr.io/meixu6693/dsh:latest
 ```
 
 </details>
@@ -69,7 +69,7 @@ DeepSeek account.
 | `AUTH_MODE` | `builtin` | `builtin` = password gate inside the container; `none` = your proxy authenticates. Any other value refuses to start. |
 | `DSH_PASSWORD` | unset | Password for the built-in gate (or `DSH_PASSWORD_FILE`). Unset = generated on first start, printed once. |
 | `AUTH_USER` | `dsh` | User name for the built-in gate. |
-| `REMOTE_SIGNIN` | `on` | DeepSeek **account** sign-in from a remote browser: loads [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin), which puts the paste panel into the page. `off` = upstream's loopback-only behaviour. |
+| `REMOTE_SIGNIN` | `on` | DeepSeek **account** sign-in from a remote browser: loads [dsh-remote-signin](https://github.com/MeiXu6693/dsh-remote-signin), which puts the paste panel into the page. `off` = upstream's loopback-only behaviour. |
 | `PUID` · `PGID` | `1000` · `1000` | The uid:gid everything runs as, and the ownership the writable paths are handed to at start. Match whatever already owns your `/data`; **on Unraid that is `99` · `100`** (see [On Unraid](#on-unraid)). |
 | `UMASK` | `022` | File mode mask for the processes the container starts; `002` for a group-writable workspace. |
 | `TZ` | `Asia/Shanghai` in `compose.yaml` | Container time zone. |
@@ -102,7 +102,7 @@ an install run through a `docker exec` that forgot `-u`. Both recipes:
 ## Update
 
 ```bash
-docker pull ghcr.io/2220545672/dsh:latest
+docker pull ghcr.io/meixu6693/dsh:latest
 docker compose up -d          # or recreate your own container
 ```
 
@@ -140,7 +140,7 @@ stay safe to use on this appdata — they rewrite ownership to `99:100`, which t
 then simply agrees with. Unraid-specific notes (the template's fields, migrating from
 another DSH image) and the
 [forum support thread](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)
-are at **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**.
+are at **[MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid)**.
 
 ## Learn more
 
@@ -155,8 +155,8 @@ are at **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**.
 
 ## Support
 
-- **This image (build, container, docs):** [GitHub Issues](https://github.com/2220545672/dsh-docker/issues) — please include `docker logs <container> | head -30`, your host OS and kernel (`uname -r`), and how `PUBLIC_URL` / `ALLOWED_CLIENTS` are set.
-- **Unraid template and Community Applications:** the [forum thread](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/) (the CA entry links there) or [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid).
+- **This image (build, container, docs):** [GitHub Issues](https://github.com/MeiXu6693/dsh-docker/issues) — please include `docker logs <container> | head -30`, your host OS and kernel (`uname -r`), and how `PUBLIC_URL` / `ALLOWED_CLIENTS` are set.
+- **Unraid template and Community Applications:** the [forum thread](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/) (the CA entry links there) or [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid).
 - **Problems inside DSH itself** (models, plugins, UI): [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness).
 
 ## License

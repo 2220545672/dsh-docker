@@ -59,7 +59,7 @@
 6.  登录对话框变成已登录
 ```
 
-本镜像安装并钉住的那个[插件](https://github.com/2220545672/dsh-remote-signin)里对应两半：
+本镜像安装并钉住的那个[插件](https://github.com/MeiXu6693/dsh-remote-signin)里对应两半：
 
 * **声明（claim）**——`src/index.js` 包住 `deepseekAccount.startSignIn`，把非回环的浏览器 origin 换成 `REMOTE_SIGNIN_ORIGIN`（默认 `http://127.0.0.1:47821`）。本来就在回环上的浏览器原样放行，所以桌面应用和 `ssh -L` 会话的行为与上游完全一致。
 * **回传路径**——`assets/inpage.js` 被注入 DSH 文档，在有登录等待时把粘贴框放进页面。它只从你粘贴的地址里取 `code` 和 `state`，发到**你此刻正在使用的这个 origin** 上的 `/oauth/callback`——除此之外不发给任何地方，所以它没法被当作跳板。没有第二个页面：面板是授权码唯一的回传入口。
@@ -118,7 +118,7 @@ ssh -N -L 3081:127.0.0.1:3080 root@<服务器>     # 后面这个端口是你把
 
 | 变量 | 默认值 | 含义 |
 |---|---|---|
-| `REMOTE_SIGNIN` | `on` | `on` = 加载[插件](https://github.com/2220545672/dsh-remote-signin)（声明回环 origin、把粘贴面板注入页面）；`off` = 上游的「仅回环」行为。填其它值容器拒绝启动。 |
+| `REMOTE_SIGNIN` | `on` | `on` = 加载[插件](https://github.com/MeiXu6693/dsh-remote-signin)（声明回环 origin、把粘贴面板注入页面）；`off` = 上游的「仅回环」行为。填其它值容器拒绝启动。 |
 | `REMOTE_SIGNIN_ORIGIN` | `http://127.0.0.1:47821` | 向平台声明的回环 origin。必须是 `http://` + `127.0.0.1` / `localhost` / `[::1]` 之一 + 显式端口；那里不能有任何监听。 |
 
 插件版本由 [Dockerfile](../Dockerfile) 的 `REMOTE_SIGNIN_VERSION` 构建参数钉住（当前 `v0.1.1`）：镜像拿到的是它构建时测试过的那个版本，而插件自身的 CI 负责验证它。
@@ -139,7 +139,7 @@ ssh -N -L 3081:127.0.0.1:3080 root@<服务器>     # 后面这个端口是你把
 
 | 镜像内路径 | 在哪维护 | 作用 |
 |---|---|---|
-| `/app/node_modules/dsh-remote-signin/src/index.js` | [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin) → `src/index.js` | 声明、静态资源路由、面板注入。 |
+| `/app/node_modules/dsh-remote-signin/src/index.js` | [dsh-remote-signin](https://github.com/MeiXu6693/dsh-remote-signin) → `src/index.js` | 声明、静态资源路由、面板注入。 |
 | `/app/node_modules/dsh-remote-signin/assets/inpage.js` | 同一仓库 → `assets/inpage.js` | 出现在 DSH 页面里的面板——授权码唯一的回传入口。 |
 | `/app/node_modules/dsh-remote-signin/cordis.patch.yml` | 同一仓库 → `cordis.patch.yml` | 入口脚本用 `--patch` 传入的加载条目。 |
 | `/usr/local/bin/entrypoint.sh` | 本仓库 | 决定是否加载插件、校验 `REMOTE_SIGNIN_ORIGIN`、在日志里给独立页面地址。 |

@@ -2,9 +2,9 @@
 
 # Maintainer handbook
 
-This repository builds and publishes the container image `ghcr.io/2220545672/dsh`. The
+This repository builds and publishes the container image `ghcr.io/meixu6693/dsh`. The
 **Unraid side** — the Community Applications template, the icon, the CA submission notes
-and the migration guide — lives in [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid).
+and the migration guide — lives in [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid).
 Nothing here may depend on that repository: the image must build and publish on its own.
 
 User-facing content is in [README.md](README.md) (English, the default) and
@@ -112,12 +112,12 @@ target platform** still needs a separate check (historically this step caught an
 defect that CI missed). The essentials:
 
 ```bash
-docker pull ghcr.io/2220545672/dsh:latest          # not logged in: confirm the package is public
+docker pull ghcr.io/meixu6693/dsh:latest          # not logged in: confirm the package is public
 docker run -d --name dsh-acceptance -p 127.0.0.1:18099:8080 \
   -e PUBLIC_URL=http://127.0.0.1:18099 -e TZ=Asia/Shanghai \
   -v /tmp/dsh-accept/data:/data -v /tmp/dsh-accept/workspace:/workspace \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
-  ghcr.io/2220545672/dsh:latest
+  ghcr.io/meixu6693/dsh:latest
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18099/healthz   # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18099/          # 303 (with a dsh-auth cookie)
 docker exec -u 1000 dsh-acceptance bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all -- /bin/sh -c 'echo SANDBOX_OK'
@@ -130,7 +130,7 @@ container.
 ## Unraid users
 
 The Community Applications template, the icon and the Unraid-specific documentation are
-maintained in [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid). Two
+maintained in [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid). Two
 things couple the two repositories, and both are deliberate:
 
 1. the template's `<Repository>` points at this image's `:latest` tag, so no version

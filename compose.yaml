@@ -8,7 +8,7 @@
 # and the trade-off. On a Landlock-capable kernel you may drop them.
 services:
   dsh:
-    image: ${DSH_IMAGE:-ghcr.io/2220545672/dsh:latest}
+    image: ${DSH_IMAGE:-ghcr.io/meixu6693/dsh:latest}
     container_name: dsh
     restart: unless-stopped
     ports:

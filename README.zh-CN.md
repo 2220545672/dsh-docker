@@ -3,14 +3,14 @@
 <p align="center">把 <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>（在浏览器里驱动的 AI 编程智能体）装进一个自包含镜像，任何 Docker 主机都能跑：一个端口、两个卷、一条命令。</p>
 
 <p align="center"><a href="README.md">English</a> · <b>中文说明</b><br>
-<a href="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/2220545672/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
-<a href="https://github.com/2220545672/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/2220545672/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
+<a href="https://github.com/MeiXu6693/dsh-docker/actions/workflows/validate.yml"><img src="https://github.com/MeiXu6693/dsh-docker/actions/workflows/validate.yml/badge.svg" alt="validate"></a>
+<a href="https://github.com/MeiXu6693/dsh-docker/releases"><img src="https://img.shields.io/github/v/release/MeiXu6693/dsh-docker?label=tracking&color=orange" alt="tracking"></a>
 <img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-lightgrey" alt="platforms">
 <img src="https://img.shields.io/badge/license-MIT-green" alt="license"></p>
 
 ## 这个镜像的优势
 
-| | 自己跑上游 | `ghcr.io/2220545672/dsh` |
+| | 自己跑上游 | `ghcr.io/meixu6693/dsh` |
 |---|---|---|
 | 启动 | 自己装 npm 包、手工配置 | `docker compose up -d` |
 | 没有 Landlock 的内核上（Unraid 7.x、部分设备内核）的命令沙箱 | 起不来 | 可用——内置 bubblewrap，[`compose.yaml`](compose.yaml) 里已带那两个 `--security-opt` |
@@ -41,7 +41,7 @@ docker run -d --name dsh --restart unless-stopped -p 8080:8080 \
   -v "$PWD/dsh/data:/data" \
   -v "$PWD/dsh/workspace:/workspace" \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
-  ghcr.io/2220545672/dsh:latest
+  ghcr.io/meixu6693/dsh:latest
 ```
 
 </details>
@@ -63,7 +63,7 @@ docker run -d --name dsh --restart unless-stopped -p 8080:8080 \
 | `AUTH_MODE` | `builtin` | `builtin` = 容器内口令门禁；`none` = 交给前面的代理鉴权。填其它值容器会拒绝启动。 |
 | `DSH_PASSWORD` | 未设 | 口令门禁的密码（也可用 `DSH_PASSWORD_FILE`）。未设 = 首启生成并打印一次。 |
 | `AUTH_USER` | `dsh` | 口令门禁的用户名。 |
-| `REMOTE_SIGNIN` | `on` | 远程浏览器用 DeepSeek **账号**登录：加载 [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin)，由它把粘贴面板注入页面。`off` = 回到上游「仅回环」行为。 |
+| `REMOTE_SIGNIN` | `on` | 远程浏览器用 DeepSeek **账号**登录：加载 [dsh-remote-signin](https://github.com/MeiXu6693/dsh-remote-signin)，由它把粘贴面板注入页面。`off` = 回到上游「仅回环」行为。 |
 | `PUID` · `PGID` | `1000` · `1000` | 容器一切进程的运行 uid:gid，也是启动时把可写路径交出去的属主。填**已经拥有你 `/data` 的那个身份**；**Unraid 上是 `99` · `100`**（见[在 Unraid 上](#在-unraid-上)）。 |
 | `UMASK` | `022` | 容器启动的进程的文件权限掩码；共享可写工作区用 `002`。 |
 | `TZ` | `compose.yaml` 里是 `Asia/Shanghai` | 容器时区。 |
@@ -93,7 +93,7 @@ environment:
 ## 更新
 
 ```bash
-docker pull ghcr.io/2220545672/dsh:latest
+docker pull ghcr.io/meixu6693/dsh:latest
 docker compose up -d          # 或重建你自己的容器
 ```
 
@@ -129,7 +129,7 @@ Unraid 不需要专门的构建：在 Community Applications 里装 **DSH**，�
 Fix Common Problems 那套权限工具在这个 appdata 上可以放心跑——它们把属主改写成 `99:100`，
 而容器本来就认同这个身份。Unraid 相关的说明（模板字段、从别的 DSH 镜像迁移）与论坛
 [支持帖](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)
-都在 **[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)**。
+都在 **[MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid)**。
 
 ## 更多文档
 
@@ -144,8 +144,8 @@ Fix Common Problems 那套权限工具在这个 appdata 上可以放心跑——
 
 ## 支持
 
-- **本镜像（构建、容器、文档）：**[GitHub Issues](https://github.com/2220545672/dsh-docker/issues)——请附上 `docker logs <容器名> | head -30`、宿主系统与内核版本（`uname -r`）、以及 `PUBLIC_URL` / `ALLOWED_CLIENTS` 的设置方式。
-- **Unraid 模板与 Community Applications：**[论坛帖](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)（CA 条目就指向那里）或 [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)。
+- **本镜像（构建、容器、文档）：**[GitHub Issues](https://github.com/MeiXu6693/dsh-docker/issues)——请附上 `docker logs <容器名> | head -30`、宿主系统与内核版本（`uname -r`）、以及 `PUBLIC_URL` / `ALLOWED_CLIENTS` 的设置方式。
+- **Unraid 模板与 Community Applications：**[论坛帖](https://forums.unraid.net/topic/200908-support-dsh-deepseek-harness-ai-coding-agent-in-your-browser/)（CA 条目就指向那里）或 [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid)。
 - **DSH 自身的问题**（模型、插件、界面）：[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)。
 
 ## 许可

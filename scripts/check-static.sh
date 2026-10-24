@@ -15,7 +15,7 @@
 # running container before publishing.
 #
 # The Community Apps checks that used to live here moved to the template
-# repository (2220545672/dsh-unraid) together with the template itself: this
+# repository (MeiXu6693/dsh-unraid) together with the template itself: this
 # repository builds an image and must be able to release without a CA layout to
 # satisfy.
 #

@@ -56,7 +56,7 @@ docker exec -u <PUID>:<PGID> <容器名> dsh plugin --profile web remove @scope/
 
 ```bash
 # Unraid：appdata 属于 nobody:users，容器就应该用同一个身份
-docker run --detach --name dsh --env PUID=99 --env PGID=100 … ghcr.io/2220545672/dsh:latest
+docker run --detach --name dsh --env PUID=99 --env PGID=100 … ghcr.io/meixu6693/dsh:latest
 ```
 
 默认值是 `1000:1000`（镜像自带的 `node` 账号），所以 compose / 裸 `docker run` 部署一字不改

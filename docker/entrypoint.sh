@@ -64,7 +64,7 @@ AUTH_COOKIE_NAME="${AUTH_COOKIE_NAME:-dsh_gate}"
 AUTH_COOKIE_MAX_AGE="${AUTH_COOKIE_MAX_AGE:-604800}"
 DSH_PASSWORD="${DSH_PASSWORD:-}"
 DSH_PASSWORD_FILE="${DSH_PASSWORD_FILE:-}"
-# The Unraid template (in 2220545672/dsh-unraid) ships this as the Password field's
+# The Unraid template (in MeiXu6693/dsh-unraid) ships this as the Password field's
 # default so that a fresh install has a working login. It is public, so it protects
 # nothing until it is changed; the entrypoint therefore says so at every start (and
 # the README and that template's description tell the operator to change it). A
@@ -85,7 +85,7 @@ PUBLIC_URL="${PUBLIC_URL:-}"
 # the operator's own machine is chosen so a stray local service can never receive
 # the authorization code.
 #
-# The plugin is github.com/2220545672/dsh-remote-signin, installed by the Dockerfile
+# The plugin is github.com/MeiXu6693/dsh-remote-signin, installed by the Dockerfile
 # and maintained there; this image only decides whether to load it and with which claim.
 # It is loaded through this image's own patch file, by absolute path: the launcher
 # resolves entry names from the installation and the profile, and a plugin the image

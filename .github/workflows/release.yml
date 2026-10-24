@@ -15,7 +15,7 @@ name: release
 # repositories and cross-referencing stays a copy-paste.
 #
 # The Unraid template is NOT built or attached here any more: it lives in its own
-# repository (2220545672/dsh-unraid) and points at this image's `:latest` tag, so
+# repository (MeiXu6693/dsh-unraid) and points at this image's `:latest` tag, so
 # the two need no version handshake.
 
 on:
@@ -168,6 +168,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GHCR requires a lowercase repository path, but github.repository_owner keeps the
+      # account's display case (MeiXu6693) and the docker reference parser rejects it with
+      # "repository name (MeiXu6693/dsh) must be lowercase". Lowercase it for the steps
+      # below. If this override ever stops taking effect, publish fails loudly rather than
+      # pushing somewhere unexpected.
+      - name: Lowercase the image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY_OWNER,,}/dsh" >> "${GITHUB_ENV}"
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
@@ -220,6 +228,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GHCR requires a lowercase repository path, but github.repository_owner keeps the
+      # account's display case (MeiXu6693) and the docker reference parser rejects it with
+      # "repository name (MeiXu6693/dsh) must be lowercase". Lowercase it for the steps
+      # below. If this override ever stops taking effect, publish fails loudly rather than
+      # pushing somewhere unexpected.
+      - name: Lowercase the image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY_OWNER,,}/dsh" >> "${GITHUB_ENV}"
+
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -244,7 +260,7 @@ jobs:
           3. **Apply** — the WebUI opens on the port you picked, and the token bootstrap completes by itself.
 
           The CA entry and the template in
-          [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid) are the same thing, and both
+          [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid) are the same thing, and both
           install this image's \`latest\` tag, so later releases ask nothing of you beyond *Force update*
           on the Docker tab.
 

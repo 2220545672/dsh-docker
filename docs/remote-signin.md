@@ -76,7 +76,7 @@ trick:
 6.  sign-in dialog turns green                  memory, stores the credential.
 ```
 
-Two halves, both in the [plugin](https://github.com/2220545672/dsh-remote-signin) that
+Two halves, both in the [plugin](https://github.com/MeiXu6693/dsh-remote-signin) that
 this image installs and pins:
 
 * **The claim** — `src/index.js` wraps `deepseekAccount.startSignIn` and replaces a
@@ -180,7 +180,7 @@ same place; the panel exists for the times when the tunnel is not at hand.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `REMOTE_SIGNIN` | `on` | `on` loads the [plugin](https://github.com/2220545672/dsh-remote-signin), which claims the loopback origin and puts the paste panel into the page; `off` is upstream's loopback-only behaviour. Any other value refuses to start. |
+| `REMOTE_SIGNIN` | `on` | `on` loads the [plugin](https://github.com/MeiXu6693/dsh-remote-signin), which claims the loopback origin and puts the paste panel into the page; `off` is upstream's loopback-only behaviour. Any other value refuses to start. |
 | `REMOTE_SIGNIN_ORIGIN` | `http://127.0.0.1:47821` | The loopback origin claimed with the platform. Must be `http://` + one of `127.0.0.1` / `localhost` / `[::1]` + an explicit port; nothing may listen there. |
 
 The plugin's version is pinned by the `REMOTE_SIGNIN_VERSION` build argument in the
@@ -203,7 +203,7 @@ tested with, and the plugin's own CI is what validates it.
 
 | Path (in the image) | Where it is maintained | Role |
 |---|---|---|
-| `/app/node_modules/dsh-remote-signin/src/index.js` | [dsh-remote-signin](https://github.com/2220545672/dsh-remote-signin) → `src/index.js` | The claim, the asset routes and the panel injection. |
+| `/app/node_modules/dsh-remote-signin/src/index.js` | [dsh-remote-signin](https://github.com/MeiXu6693/dsh-remote-signin) → `src/index.js` | The claim, the asset routes and the panel injection. |
 | `/app/node_modules/dsh-remote-signin/assets/inpage.js` | same repository → `assets/inpage.js` | The panel that appears in the DSH page — the only way the code comes back. |
 | `/app/node_modules/dsh-remote-signin/cordis.patch.yml` | same repository → `cordis.patch.yml` | The launcher patch entry the entrypoint passes with `--patch`. |
 | `/usr/local/bin/entrypoint.sh` | this repository | Decides whether to load the plugin, validates `REMOTE_SIGNIN_ORIGIN`, and names the standalone page in the log. |

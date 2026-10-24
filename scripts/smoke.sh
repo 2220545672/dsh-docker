@@ -204,7 +204,7 @@ else
 fi
 
 # 4c — the default password some deployments ship (the Unraid template in
-# 2220545672/dsh-unraid uses 12345678) must announce itself. Many operators never
+# MeiXu6693/dsh-unraid uses 12345678) must announce itself. Many operators never
 # open the README, so this log line is the only signal that the gate is still
 # protecting nothing (the default is public).
 DEFAULT_NAME="${NAME}-defaultpw"

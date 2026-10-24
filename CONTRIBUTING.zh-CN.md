@@ -2,9 +2,9 @@
 
 # 维护者手册
 
-本仓库负责构建与发布容器镜像 `ghcr.io/2220545672/dsh`。**Unraid 那一侧**——Community
+本仓库负责构建与发布容器镜像 `ghcr.io/meixu6693/dsh`。**Unraid 那一侧**——Community
 Applications 模板、图标、CA 提交说明与迁移指南——在
-[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)。本仓库不得依赖那个仓库：
+[MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid)。本仓库不得依赖那个仓库：
 镜像必须能独立构建与发布。
 
 面向用户的文档是 [README.md](README.md)（英文，默认）与 [README.zh-CN.md](README.zh-CN.md)
@@ -103,12 +103,12 @@ CI 只能证明镜像能起来、断言能过；**它是否真的能在目标平
 CI 没发现的 edge 模式缺陷）。要点：
 
 ```bash
-docker pull ghcr.io/2220545672/dsh:latest          # 未登录：确认包是公开的
+docker pull ghcr.io/meixu6693/dsh:latest          # 未登录：确认包是公开的
 docker run -d --name dsh-acceptance -p 127.0.0.1:18099:8080 \
   -e PUBLIC_URL=http://127.0.0.1:18099 -e TZ=Asia/Shanghai \
   -v /tmp/dsh-accept/data:/data -v /tmp/dsh-accept/workspace:/workspace \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
-  ghcr.io/2220545672/dsh:latest
+  ghcr.io/meixu6693/dsh:latest
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18099/healthz   # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18099/          # 303（带 dsh-auth Cookie）
 docker exec -u 1000 dsh-acceptance bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all -- /bin/sh -c 'echo SANDBOX_OK'
@@ -120,7 +120,7 @@ docker exec -u 1000 dsh-acceptance bwrap --ro-bind / / --dev /dev --proc /proc -
 ## Unraid 用户
 
 Community Applications 模板、图标与 Unraid 专属文档都在
-[2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid)。两个仓库之间只有两处耦合，
+[MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid)。两个仓库之间只有两处耦合，
 且都是刻意的：
 
 1. 模板的 `<Repository>` 指向本镜像的 `:latest`，因此不需要版本握手（用户安装时模板会被快照——

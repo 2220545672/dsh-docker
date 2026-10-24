@@ -77,7 +77,7 @@ is there nor write what it creates:
 
 ```bash
 # Unraid: appdata belongs to nobody:users, so the container should be that identity too
-docker run --detach --name dsh --env PUID=99 --env PGID=100 … ghcr.io/2220545672/dsh:latest
+docker run --detach --name dsh --env PUID=99 --env PGID=100 … ghcr.io/meixu6693/dsh:latest
 ```
 
 The defaults are `1000:1000` — this image's own `node` account — so a compose or plain

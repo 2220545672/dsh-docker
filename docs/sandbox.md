@@ -9,7 +9,7 @@ This document explains the single most important non-default decision in this im
 Running DSH on a host whose kernel does not have Landlock enabled (Unraid 7.x and several other appliance kernels) requires both of the following:
 
 1. **`bubblewrap` must be present in the image** (this image bundles it; many community images do not).
-2. **The container must be started with `--security-opt seccomp=unconfined --security-opt systempaths=unconfined`** (`compose.yaml` in this repository hard-codes them; the Unraid template in [2220545672/dsh-unraid](https://github.com/2220545672/dsh-unraid) carries them in `Extra Parameters`).
+2. **The container must be started with `--security-opt seccomp=unconfined --security-opt systempaths=unconfined`** (`compose.yaml` in this repository hard-codes them; the Unraid template in [MeiXu6693/dsh-unraid](https://github.com/MeiXu6693/dsh-unraid) carries them in `Extra Parameters`).
 
 Miss the first: both legs of the sandbox are broken, and DSH's `bash` tool fails closed outright.
 Miss the second: `bwrap` cannot start inside the container (`No permissions to create a new namespace` / `Can't mount proc on /proc`).
@@ -66,12 +66,12 @@ Two key points, so you do not go down the wrong path:
 grep -i landlock /proc/kallsyms | head -3        # no output = it was not compiled in
 
 # 2. Does the image ship bwrap?
-docker run --rm --entrypoint bwrap ghcr.io/2220545672/dsh:latest --version
+docker run --rm --entrypoint bwrap ghcr.io/meixu6693/dsh:latest --version
 
 # 3. With both security-opts, can it really create a namespace? (should print SANDBOX_OK)
 docker run --rm \
   --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
-  --entrypoint setpriv ghcr.io/2220545672/dsh:latest \
+  --entrypoint setpriv ghcr.io/meixu6693/dsh:latest \
   --reuid <PUID> --regid <PGID> --clear-groups \
   bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent \
     --tmpfs /tmp --bind /workspace /workspace -- /bin/sh -c "echo SANDBOX_OK"
