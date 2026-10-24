@@ -1,27 +1,29 @@
 name: plugin-compat
 
-# Re-check the stable dsh-context-editor plugin against a real dsh-docker image.
+# Re-check the stable dsh-context-editor plugin against the newest published
+# DSH version.
 #
-# The release gate lives in release.yml: every new image is tested (inside the
-# freshly built image, with the image's own pnpm) before it is published. This
-# workflow is the manual/daily re-check of a published image. It is intentionally
-# not triggered by plugin releases: the plugin is expected to stay stable while
-# dsh-docker follows upstream DSH.
+# The release gate lives in release.yml: it runs the same smoke before an image
+# is published, so a DSH update cannot ship with a broken plugin. This workflow
+# is the manual/daily re-check for an already published image (and for a
+# registry-only plugin change); it is intentionally not triggered by plugin
+# releases.
 #
 # A failure opens (or comments on) an issue in this repository. The issue step
-# uses the workflow's own GITHUB_TOKEN, so no cross-repository token is needed.
+# uses the workflow's own GITHUB_TOKEN, so no cross-repository token is needed
+# for notifications.
 
 on:
   workflow_dispatch:
     inputs:
-      image:
-        description: 'Image to test'
-        required: false
-        default: 'ghcr.io/2220545672/dsh:latest'
       plugin_version:
         description: 'dsh-context-editor version (latest or exact)'
         required: false
         default: 'latest'
+      dsh_version:
+        description: 'Exact @deepseek-ai/dsh version (empty = newest published)'
+        required: false
+        default: ''
   schedule:
     - cron: '41 5 * * *'
 
@@ -35,7 +37,7 @@ concurrency:
 
 jobs:
   compat:
-    name: dsh-context-editor inside the image
+    name: dsh-context-editor against DSH
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,55 +46,62 @@ jobs:
         with:
           node-version: '22'
 
+      # dsh plugin shells out to pnpm; setup-node does not install it.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
       - name: Resolve versions
         id: versions
         env:
-          INPUT_IMAGE: ${{ inputs.image }}
           INPUT_PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          INPUT_DSH_VERSION: ${{ inputs.dsh_version }}
         run: |
           set -euo pipefail
-          image="${INPUT_IMAGE:-ghcr.io/2220545672/dsh:latest}"
+          dsh_version="${INPUT_DSH_VERSION:-}"
+          if [[ -z "${dsh_version}" ]]; then
+            dsh_version="$(node scripts/resolve-dsh-version.mjs | awk -F= '$1 == "version" { print $2 }')"
+          fi
           plugin_version="${INPUT_PLUGIN_VERSION:-latest}"
           if [[ "${plugin_version}" == "latest" ]]; then
             plugin_version="$(npm view dsh-context-editor version)"
           fi
+          [[ "${dsh_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "invalid dsh version: ${dsh_version}" >&2; exit 2; }
           [[ "${plugin_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "invalid plugin version: ${plugin_version}" >&2; exit 2; }
-          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "dsh_version=${dsh_version}" >> "${GITHUB_OUTPUT}"
           echo "plugin_version=${plugin_version}" >> "${GITHUB_OUTPUT}"
           {
             echo '### Compatibility target'
             echo ''
-            echo "- image: \`${image}\`"
+            echo "- DSH: \`${dsh_version}\`"
             echo "- dsh-context-editor: \`${plugin_version}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Pull image
-        run: docker pull "${{ steps.versions.outputs.image }}"
-
-      - name: Compatibility smoke inside the image
-        run: bash scripts/plugin-compat-image.sh "${{ steps.versions.outputs.image }}" "${{ steps.versions.outputs.plugin_version }}"
+      - name: Compatibility smoke
+        run: bash scripts/plugin-compat.sh "${{ steps.versions.outputs.dsh_version }}" "${{ steps.versions.outputs.plugin_version }}"
 
       - name: Open or update the failure issue
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IMAGE: ${{ steps.versions.outputs.image }}
+          DSH_VERSION: ${{ steps.versions.outputs.dsh_version }}
           PLUGIN_VERSION: ${{ steps.versions.outputs.plugin_version }}
         run: |
           set -euo pipefail
-          title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} in ${IMAGE}"
+          title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} on DSH ${DSH_VERSION}"
           body="$(mktemp)"
           cat > "${body}" <<BODY
-          The compatibility re-check failed.
+          The cross-repository compatibility test failed.
 
-          - image: \`${IMAGE}\`
           - plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`
+          - DSH: \`${DSH_VERSION}\`
+          - trigger: \`${{ github.event_name }}\`
           - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           Reproduce locally:
 
           \`\`\`bash
-          bash scripts/plugin-compat-image.sh "${IMAGE}" "${PLUGIN_VERSION}"
+          bash scripts/plugin-compat.sh "${DSH_VERSION}" "${PLUGIN_VERSION}"
           \`\`\`
           BODY
           existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' --json number,title \

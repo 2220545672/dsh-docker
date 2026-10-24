@@ -160,6 +160,23 @@ jobs:
       - name: Smoke test the image
         run: bash scripts/smoke.sh "dsh-verify:${{ needs.resolve.outputs.version }}"
 
+  plugin-compat:
+    name: dsh-context-editor compatibility
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # dsh plugin shells out to pnpm; setup-node does not install it.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
       - name: Resolve the stable plugin version
         id: plugin
         run: |
@@ -169,14 +186,13 @@ jobs:
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
       # The image update is what changed; the plugin is expected to stay stable.
-      # This runs inside the image, with the image's own pnpm, after the local
-      # amd64 build and the normal smoke test.
-      - name: Test the stable plugin inside the image
-        id: plugin-test
-        run: bash scripts/plugin-compat-image.sh "dsh-verify:${{ needs.resolve.outputs.version }}" "${{ steps.plugin.outputs.version }}"
+      # Gate the publish on the current stable plugin working with this DSH
+      # version, and file an issue instead of shipping a broken image silently.
+      - name: Test the current stable plugin against this DSH version
+        run: bash scripts/plugin-compat.sh "${{ needs.resolve.outputs.version }}" "${{ steps.plugin.outputs.version }}"
 
-      - name: Open or update the plugin compatibility issue
-        if: failure() && steps.plugin-test.outcome == 'failure'
+      - name: Open or update the failure issue
+        if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DSH_VERSION: ${{ needs.resolve.outputs.version }}
@@ -186,8 +202,8 @@ jobs:
           title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} on DSH ${DSH_VERSION}"
           body="$(mktemp)"
           cat > "${body}" <<BODY
-          The image release was blocked because the stable plugin failed inside
-          the freshly built image.
+          The image release was blocked because the stable plugin failed against
+          the new DSH version.
 
           - plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`
           - DSH: \`${DSH_VERSION}\`
@@ -196,7 +212,7 @@ jobs:
           Reproduce locally:
 
           \`\`\`bash
-          bash scripts/plugin-compat-image.sh "dsh-verify:${DSH_VERSION}" "${PLUGIN_VERSION}"
+          bash scripts/plugin-compat.sh "${DSH_VERSION}" "${PLUGIN_VERSION}"
           \`\`\`
           BODY
           existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' --json number,title \
@@ -209,7 +225,7 @@ jobs:
 
   publish:
     name: publish multi-arch image
-    needs: [resolve, verify]
+    needs: [resolve, verify, plugin-compat]
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.push.outputs.digest }}

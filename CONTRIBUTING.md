@@ -69,8 +69,8 @@ version and takes the highest by semver; prereleases participate per the spec.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `validate` | Every push and PR | Static gates + shellcheck + hadolint + `caddy validate` + script end-to-end |
-| `release` | Hourly cron (:17), pushes touching the image, manual | Resolve version → **static gates** → build amd64 → smoke → **stable `dsh-context-editor` compatibility inside the built image** → push amd64+arm64 (`:<version>`, `:latest`, `:<channel>`) → create the `dsh-v<version>` tag and Release |
-| `plugin-compat` | Daily + manual | Pull a published image, install the current stable `dsh-context-editor` inside it with the image pnpm, restart through the normal entrypoint, assert the plugin reaches the client bundle graph; an issue is opened on failure |
+| `release` | Hourly cron (:17), pushes touching the image, manual | Resolve version → **static gates** → build amd64 → smoke → **stable `dsh-context-editor` compatibility** → push amd64+arm64 (`:<version>`, `:latest`, `:<channel>`) → create the `dsh-v<version>` tag and Release |
+| `plugin-compat` | Daily + manual | Install the newest published DSH plus the current stable `dsh-context-editor`, boot the web server, assert the plugin reaches the client bundle graph; an issue is opened on failure |
 
 Release tags are spelled `dsh-v<version>` to match upstream's own scheme
 (`deepseek-ai/deepseek-harness` releases as `dsh-v0.2.1-alpha.5`), so one version reads
