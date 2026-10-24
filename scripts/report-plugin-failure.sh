@@ -78,7 +78,7 @@ title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} failed against ${DSH
 body="$(mktemp)"
 {
     echo 'The cross-repository compatibility test failed and the report could not'
-    echo "be forwarded to \`2220545672/dsh-context-editor\`."
+    echo 'be forwarded to `2220545672/dsh-context-editor`.'
     echo
     echo "- plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`"
     echo "- DSH: \`${DSH_VERSION}\`"
@@ -86,7 +86,7 @@ body="$(mktemp)"
     [[ -n "${RUN_URL}" ]] && echo "- failing run: ${RUN_URL}"
     echo
     echo 'Fix the forwarding so this class of failure lands in the plugin repository:'
-    echo "add a \`CROSS_REPO_TOKEN\` secret to this repository (see CONTRIBUTING.md)."
+    echo 'add a `CROSS_REPO_TOKEN` secret to this repository (see CONTRIBUTING.md).'
 } > "${body}"
 
 existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' \
