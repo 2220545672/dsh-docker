@@ -175,18 +175,37 @@ jobs:
         id: plugin-test
         run: bash scripts/plugin-compat-image.sh "dsh-verify:${{ needs.resolve.outputs.version }}" "${{ steps.plugin.outputs.version }}"
 
-      # The plugin is the subject under test, so its issues belong in the plugin
-      # repository; this repository's token cannot write there, so the report
-      # travels as a repository_dispatch event. The script falls back to a local
-      # issue when CROSS_REPO_TOKEN is missing, so a red run is never silent.
-      - name: Report the plugin compatibility failure
+      - name: Open or update the plugin compatibility issue
         if: failure() && steps.plugin-test.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           DSH_VERSION: ${{ needs.resolve.outputs.version }}
           PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
-        run: bash scripts/report-plugin-failure.sh "${PLUGIN_VERSION}" "${DSH_VERSION}" "dsh-verify:${DSH_VERSION}"
+        run: |
+          set -euo pipefail
+          title="[plugin-compat] dsh-context-editor@${PLUGIN_VERSION} on DSH ${DSH_VERSION}"
+          body="$(mktemp)"
+          cat > "${body}" <<BODY
+          The image release was blocked because the stable plugin failed inside
+          the freshly built image.
+
+          - plugin: \`dsh-context-editor@${PLUGIN_VERSION}\`
+          - DSH: \`${DSH_VERSION}\`
+          - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Reproduce locally:
+
+          \`\`\`bash
+          bash scripts/plugin-compat-image.sh "dsh-verify:${DSH_VERSION}" "${PLUGIN_VERSION}"
+          \`\`\`
+          BODY
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search 'plugin-compat in:title' --json number,title \
+            | jq -r --arg title "${title}" '.[] | select(.title == $title) | .number' | head -n1)"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file "${body}"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file "${body}"
+          fi
 
   publish:
     name: publish multi-arch image
